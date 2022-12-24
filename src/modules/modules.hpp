@@ -2,6 +2,7 @@
 #define _MODULES_H
 
 #include <string>
+#include <unordered_map>
 
 #include "module.hpp"
 
@@ -18,8 +19,10 @@ public:
 };
 
 class LanguageModule : public Module {
+private:
+    std::unordered_map<unsigned char, std::string> group_to_name;
 public:
-    using Module::Module;
+    LanguageModule(std::string _name, std::string _color, std::unordered_map<unsigned char, std::string> _group_to_name): Module(_name, _color), group_to_name(_group_to_name){};
     std::string update(void) const;
 };
 

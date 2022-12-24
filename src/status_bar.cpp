@@ -2,10 +2,6 @@
 #include <string>
 #include <vector>
 #include <unistd.h>
-#include <X11/Xlib.h>
-#include <X11/X.h>
-#include <X11/Xutil.h>
-#include <X11/Xatom.h>
 
 #include "status_bar.hpp"
 #include "modules/modules.hpp"
@@ -40,18 +36,6 @@ void StatusBar::display(void) const {
         
         is_first = false;
     }
-
-    XTextProperty *text = new XTextProperty();
-    text->value = (unsigned char *) status_bar.c_str();
-    text->encoding = (Atom) "STRING";
-    text->format = 8;
-    text->nitems = 1;
-
-    Display *d = XOpenDisplay(0);
-    int s = DefaultScreen(d);
-    XSetWMName(d, RootWindow(d, s), text);
-
-
 
     char *args[] = {"/usr/bin/xsetroot", "-name", (char *) status_bar.c_str(), NULL};
     execvp(args[0], args);
