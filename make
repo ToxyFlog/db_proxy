@@ -2,4 +2,4 @@
 
 cd build
 make
-mv status_bar ..
+mv build_file ..
