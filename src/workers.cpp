@@ -1,13 +1,18 @@
-#include <any>
+#include <string>
+#include <unordered_set>
+#include <variant>
 #include <optional>
 #include <thread>
 #include <mutex>
+#include <fcntl.h>
+#include <unistd.h>
 #include "work_queue.hpp"
 #include "pg_client.hpp"
+#include "write.hpp"
 #include "utils.hpp"
 #include "workers.hpp"
 
-static const int NO_RESOURCE = -1;
+WorkQueue work_queue;
 
 std::vector<Resource> resources;
 std::mutex resources_mutex;
@@ -15,38 +20,69 @@ std::mutex resources_mutex;
 std::queue<std::thread> workers;
 bool is_running = true;
 
-WorkQueue work_queue;
+inline std::string select_columns_from_table(std::vector<std::string> &columns, std::string &table) { return "SELECT " + join(columns, ',') + " FROM " + table; }
+inline std::string select_column_information(std::string table) {
+    return "SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_name = '" + table + "'";
+}
 
+static const int NO_RESOURCE = -1;
 void create_resource(PGClient &client, Batch batch) {
-    Operation operation = std::any_cast<Operation>(batch.shared_data);
-    Resource resource = std::any_cast<Resource>(operation.data);
+    Operation operation = std::get<Operation>(batch.shared_data);
+    Resource resource = std::get<Resource>(operation.data);
 
-    if (!client.connect(resource.connection_string)) {
-        write_variable(operation.fd, int32_t, htonl(NO_RESOURCE));
+    if (!client.connect(resource)) {
+        write_variable_immediate(operation.fd, int32_t, htonl(NO_RESOURCE));
         return;
     }
 
-    std::optional<PGResponse> query_response = client.query("SELECT count(1) FROM pg_tables;");
-    bool is_reachable = query_response.has_value() && query_response.value().size() && query_response.value()[0].size();
-    if (!is_reachable) {
-        write_variable(operation.fd, int32_t, htonl(NO_RESOURCE));
+    std::optional<PGResponse> response = client.query(select_column_information(resource.table));
+    if (!response.has_value() || response.value().size() == 0) {
+        write_variable_immediate(operation.fd, int32_t, htonl(NO_RESOURCE));
         return;
+    }
+
+    for (auto &tuple : response.value()) {
+        bool is_nullable = tuple[2] == "YES" || tuple[3].size() > 0;
+        Column column {tuple[0], tuple[1], is_nullable};
+        resource.columns.push_back(column);
     }
 
     std::unique_lock resources_lock(resources_mutex);
-    write_variable(operation.fd, int32_t, htonl(resources.size()));
+    write_variable_immediate(operation.fd, int32_t, htonl(resources.size()));
     resources.push_back(resource);
     resources_lock.unlock();
 }
 
-void select(PGClient &client, Batch batch) {
-    (void) client;
-    // Something something = std::any_cast<Something>(batch.shared_data);
+void complete_select_operation(Operation &operation, std::vector<std::string> &columns, PGResponse &tuples) {
+    set_fd_flag(operation.fd, O_NONBLOCK);
+    bool error = false;
+    begin_write(operation.fd, &error);
 
-    for (auto &operation : batch.operations) {
-    (void) operation;
-        // Something something = std::any_cast<Something>(operation.data);
+    columns_t cur_columns = std::get<columns_t>(operation.data);
+    for (auto &tuple : tuples) {
+        for (size_t j = 0;j < tuple.size();j++) {
+            if (!cur_columns.contains(columns[j])) continue;
+
+            write_str(tuple[j]);
+            if (error) return;
+        }
     }
+    write_variable(string_len_t, 0);
+    end_write();
+    set_fd_flag(operation.fd, O_NONBLOCK);
+}
+
+void select(PGClient &client, Batch batch) {
+    columns_t columns_set = std::get<columns_t>(batch.shared_data);
+    std::vector<std::string> columns = std::vector<std::string>(columns_set.begin(), columns_set.end());
+
+    std::optional<PGResponse> response = client.query(select_columns_from_table(columns, resources[batch.resource_id].table));
+    if (!response.has_value()) return;
+
+    uint64_t t = current_time_milliseconds();
+    PGResponse tuples = response.value();
+    for (auto &operation : batch.operations) complete_select_operation(operation, columns, tuples);
+    printf("Time: %llu\n", current_time_milliseconds() - t);
 }
 
 void insert(PGClient &client, Batch batch) {
@@ -65,9 +101,8 @@ void process_batches() {
         Batch batch = work_queue.pop();
         if (!is_running) return;
 
-        if (batch.type != CREATE_RESOURCE) client.connect(resources[batch.resource_id].connection_string);
+        if (batch.type != CREATE_RESOURCE && !client.connect(resources[batch.resource_id])) continue;
 
-        bool error = true;
         try {
             switch (batch.type) {
                 case CREATE_RESOURCE:
@@ -79,32 +114,21 @@ void process_batches() {
                 case INSERT:
                     insert(client, batch);
                     break;
-                default:
-                    error = true;
             }
-        } catch(std::bad_any_cast exception) {
-            error = true;
-        }
-
-        if (error) for (auto &operation : batch.operations) write_variable(operation.fd, int32_t, -1);
+        } catch(std::bad_variant_access exception) {}
 
         client.disconnect();
     }
 }
 
 void create_workers() {
-    //! threads can't be copied, so have to be either std::move()'d or instantiated inside of push
-    while (workers.size() < WORKER_THREADS) workers.push(std::thread(process_batches));
+    for (int i = 0;i < WORKER_THREADS;i++) {
+        std::thread worker(process_batches);
+        worker.detach();
+    }
 }
 
 void stop_workers() {
     is_running = false;
     work_queue.stop_waiting();
-
-    while (!workers.empty()) {
-        workers.front().join();
-        workers.pop();
-    }
-
-    exit(EXIT_SUCCESS);
 }

@@ -5,7 +5,8 @@
 
 Batch WorkQueue::pop() {
     std::unique_lock lock(mutex);
-    cv.wait(lock);
+
+    cv.wait(lock, [this](){ return !queue.empty() || quit; });
     if (quit) return Batch();
 
     Batch data = queue.front();

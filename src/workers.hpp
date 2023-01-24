@@ -2,12 +2,8 @@
 #define WORKERS_H
 
 #include "utils.hpp"
+#include "pg_client.hpp"
 #include "work_queue.hpp"
-
-struct Resource {
-    std::string connection_string;
-    columns_t columns;
-};
 
 extern std::vector<Resource> resources;
 extern WorkQueue work_queue;

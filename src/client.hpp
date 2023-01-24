@@ -2,22 +2,26 @@
 #define CLIENT_H
 
 #include <string>
-#include <unistd.h>
 #include <arpa/inet.h>
 #include "config.hpp"
 #include "utils.hpp"
 
 class Client {
 private:
-    int fd = -1;
+    int fd;
 
     sockaddr_in create_address(const char *ip_address, uint16_t port);
 
-    bool wait_for_response();
+    std::string read();
 public:
-    void connect_to(const char *ip_address, uint16_t port);
+    Client();
+    Client(const char *ip_address, uint16_t port);
+    ~Client();
 
-    int create_resource(std::string connection_string, columns_t columns);
+    void connect(const char *ip_address, uint16_t port);
+    void disconnect();
+
+    int create_resource(std::string connection_string, std::string schema, std::string table);
     std::vector<std::vector<std::string>> select(int resource, std::vector<std::string> columns);
 };
 

@@ -3,7 +3,6 @@
 
 #include <string>
 #include <vector>
-#include <unistd.h>
 #include <arpa/inet.h>
 
 typedef std::function<bool (int, std::string&)> process_message_t;

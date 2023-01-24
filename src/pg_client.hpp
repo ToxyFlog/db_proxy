@@ -6,15 +6,29 @@
 #include <optional>
 #include "libpq-fe.h"
 
-typedef std::vector<std::vector<char*>> PGResponse;
+struct Column {
+    std::string name;
+    std::string type;
+    bool is_nullable;
+};
+
+struct Resource {
+    std::string connection_string;
+    std::string schema;
+    std::string table;
+    std::vector<Column> columns;
+};
+
+typedef std::vector<std::vector<std::string>> PGResponse;
 
 class PGClient {
 private:
     PGconn *connection = nullptr;
 public:
-    bool connect(std::string &connection_string);
+    bool connect(Resource &resource);
     void disconnect();
 
+   std::optional<PGResponse> query(std::string sql);
    std::optional<PGResponse> query(const char *sql);
 };
 

@@ -10,7 +10,7 @@
 #include "config.hpp"
 #include "tcp_server.hpp"
 
-static const int BUFFER_LENGTH = 5;
+static const int BUFFER_LENGTH = 256;
 
 TCPServer::TCPServer(std::function<bool (int, std::string)> _process_message): process_message(_process_message) {}
 
