@@ -1,116 +1,103 @@
 #include <string>
-#include <unistd.h>
+#include <optional>
 #include <fcntl.h>
 #include <poll.h>
-#include <arpa/inet.h>
-#include <sys/socket.h>
-#include "write.hpp"
-#include "utils.hpp"
+#include <unistd.h>
 #include "config.hpp"
+#include "request.hpp"
+#include "utils.hpp"
+#include "write.hpp"
 #include "client.hpp"
 
 static const size_t READ_BUFFER_LENGTH = 1024;
 
 Client::Client(): fd(-1) {}
-Client::Client(const char *ip_address, uint16_t port) { connect(ip_address, port); }
+Client::Client(const char *ipAddress, uint16_t port) { connect(ipAddress, port); }
 Client::~Client() { disconnect(); }
 
-sockaddr_in Client::create_address(const char *ip_address, uint16_t port) {
+sockaddr_in Client::createAddress(const char *ipAddress, uint16_t port) {
     sockaddr_in address;
     address.sin_family = AF_INET;
     address.sin_port = htons(port);
-    if (inet_pton(AF_INET, ip_address, &address.sin_addr) == 0) exit_with_error("Invalid IP address!");
+    if (inet_pton(AF_INET, ipAddress, &address.sin_addr) == 0) exitWithError("Invalid IP address!");
     return address;
 }
 
-std::string Client::read() {
+bool Client::waitForResponse() {
     pollfd pfd {fd, POLLIN, 0};
-    if (!poll(&pfd, 1, RESPONSE_TIMEOUT_MS) || pfd.revents & POLLHUP) return "";
-
-    ssize_t num_read;
-    std::string result = "";
-    char buffer[READ_BUFFER_LENGTH];
-
-    set_fd_flag(fd, O_NONBLOCK);
-    while ((num_read = ::read(fd, buffer, READ_BUFFER_LENGTH)) > 0) result += std::string(buffer, buffer + num_read);
-    set_fd_flag(fd, O_NONBLOCK);
-
-    if (num_read == -1 && errno != EWOULDBLOCK) return "";
-    return result;
+    if (!poll(&pfd, 1, RESPONSE_TIMEOUT_MS) || pfd.revents & POLLHUP) return false;
+    return true;
 }
 
-void Client::connect(const char *ip_address, uint16_t port) {
+void Client::connect(const char *ipAddress, uint16_t port) {
     disconnect();
 
     fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd == -1) exit_with_error("Couldn't create a socket!");
+    if (fd == -1) exitWithError("Couldn't create a socket!");
 
-    sockaddr_in address = create_address(ip_address, port);
-    set_fd_flag(fd, O_NONBLOCK);
-    if (::connect(fd, (sockaddr*) &address, sizeof(address)) == -1 && errno != EINPROGRESS) exit_with_error("Couldn't connect to server!");
-    set_fd_flag(fd, O_NONBLOCK);
+    sockaddr_in address = createAddress(ipAddress, port);
+    if (setFlag(fd, O_NONBLOCK, true) == -1) exitWithError("Error while setting a flag!");
+    if (::connect(fd, (sockaddr*) &address, sizeof(address)) == -1 && errno != EINPROGRESS) exitWithError("Couldn't connect to server!");
+    if (setFlag(fd, O_NONBLOCK, false) == -1) exitWithError("Error while setting a flag!");
 
     pollfd pfd {fd, POLLOUT, 0};
-    if (!poll(&pfd, 1, CONNECTION_TIMEOUT_MS) || pfd.revents == POLLHUP) exit_with_error("Couldn't connect to server!");
+    if (!poll(&pfd, 1, CONNECTION_TIMEOUT_MS) || pfd.revents == POLLHUP) exitWithError("Couldn't connect to server!");
 }
 
-int Client::create_resource(std::string connection_string, std::string schema, std::string table) {
-    bool error = false;
-    uint32_t length = sizeof(type_t) + sizeof(int32_t) + string_size(connection_string) + string_size(schema) + string_size(table);
+std::optional<ResourceId> Client::createResource(std::string connectionString, std::string schema, std::string table) {
+    RequestLength length = sizeof(RequestType) + sizeof(ResourceId) + 3 * sizeof(RequestStringLength) + connectionString.size() + schema.size() + table.size();
 
-    begin_write(fd, &error);
-    write_variable(uint32_t, htonl(length));
-    write_variable(type_t, CREATE_RESOURCE);
-    write_variable(int32_t, htonl(-1));
-    write_str(connection_string);
-    write_str(schema);
-    write_str(table);
-    end_write();
-    if (error) return -1;
+    Write write(fd);
+    write((RequestLength) htonl(length));
+    write((RequestType) CREATE_RESOURCE);
+    write((ResourceId) htonl(-1));
+    write(connectionString);
+    write(schema);
+    write(table);
+    if (!write.finish() || !waitForResponse()) return std::nullopt;
 
-    std::string response = read();
-    if (response.size() == 0) return -1;
-
-    return ntohl(*(int32_t*) response.c_str());
+    ResourceId resource;
+    if (read(fd, &resource, sizeof(resource)) == -1) return std::nullopt;
+    return ntohl(resource);
 }
 
-std::vector<std::vector<std::string>> Client::select(int32_t resource, std::vector<std::string> columns) {
-    bool error = false;
-    uint32_t length = sizeof(type_t) + sizeof(int32_t);
-    for (auto &column : columns) length += string_size(column);
+std::optional<std::vector<std::vector<std::string>>> Client::select(ResourceId resource, std::vector<std::string> columns) {
+    RequestLength length = sizeof(RequestType) + sizeof(ResourceId);
+    for (auto &column : columns) length += sizeof(RequestStringLength) + column.size();
 
-    begin_write(fd, &error);
-    write_variable(uint32_t, htonl(length));
-    write_variable(type_t, SELECT);
-    write_variable(int32_t, htonl(resource));
-    for (auto &column : columns) write_str(column);
-    end_write();
-    if (error) return {};
+    Write write(fd);
+    write((RequestLength) htonl(length));
+    write((RequestType) SELECT);
+    write((ResourceId) htonl(resource));
+    for (auto &column : columns) write(column);
+    if (!write.finish()) return std::nullopt;
 
-    bool a = false;
-    string_len_t str_length = 0;
+    RequestStringLength stringLength = 0;
+    char buffer[READ_BUFFER_LENGTH];
     std::vector<std::vector<std::string>> result = {{}};
-    for (;;) {
-        std::string response = read();
-        size_t response_size = response.size();
-        if (response_size == 0) return {};
+    while (waitForResponse()) {
+        ssize_t numRead, offset = 0;
+        if ((numRead = read(fd, buffer, READ_BUFFER_LENGTH)) == -1) return std::nullopt;
 
-        size_t offset = 0;
-        while (offset < response_size) {
-            if (str_length == 0) {
-                str_length = ntohs(*(string_len_t*) &response[offset]);
-                if (str_length == 0) return result;
-                offset += sizeof(string_len_t);
-                result.back().push_back("");
+        while (offset < numRead) {
+            if (stringLength == 0) {
+                stringLength = ntohs(*(RequestStringLength*) &buffer[offset]);
+                offset += sizeof(RequestStringLength);
             }
+            if (stringLength == 0) return result;
 
-            size_t cur = min(str_length, response.size() - offset);
-            result.back().back() += response.substr(offset, cur);
-            offset += cur;
-            str_length -= cur;
-            if (str_length == 0 && result.back().size() == columns.size()) result.push_back({});
+            if (result.back().size() == columns.size()) result.push_back({});
+
+            if (offset < numRead) {
+                size_t readLength = min(stringLength, numRead - offset);
+                result.back().push_back(std::string(buffer + offset, buffer + offset + readLength));
+                stringLength -= readLength;
+                offset += readLength;
+            }
         }
     }
+
+    return std::nullopt;
 }
 
 void Client::disconnect() {

@@ -1,20 +1,20 @@
+#include <optional>
 #include <string>
 #include <vector>
-#include <optional>
 #include "libpq-fe.h"
 #include "workers.hpp"
-#include "pg_client.hpp"
+#include "pgClient.hpp"
 
 static const char *CONNECTION_STRING_PARAMS = "connect_timeout=10";
 
 bool PGClient::connect(Resource &resource) {
     disconnect();
 
-    std::string connection_string = resource.connection_string;
-    connection_string += connection_string.find("?") == std::string::npos ? "?" : "&";
-    connection_string += CONNECTION_STRING_PARAMS;
+    std::string connectionString = resource.connectionString;
+    connectionString += connectionString.find("?") == std::string::npos ? "?" : "&";
+    connectionString += CONNECTION_STRING_PARAMS;
 
-    connection = PQconnectdb(connection_string.c_str());
+    connection = PQconnectdb(connectionString.c_str());
 
     if (PQstatus(connection) != CONNECTION_OK) {
         disconnect();
@@ -33,10 +33,14 @@ std::optional<PGResponse> PGClient::query(const char *sql) {
         return std::nullopt;
     }
 
-    PGResponse result(PQntuples(response));
-    for (int tuple = 0; tuple < PQntuples(response); tuple++)
-        for (int field = 0; field < PQnfields(response); field++)
-            result[tuple].push_back(std::string(PQgetvalue(response, tuple, field)));
+    PGResponse result;
+    for (int tuple = 0; tuple < PQntuples(response); tuple++) {
+        result.push_back({});
+        for (int field = 0; field < PQnfields(response); field++) {
+            std::string value = PQgetvalue(response, tuple, field);
+            result[tuple].push_back(value);
+        }
+    }
 
     PQclear(response);
     return result;

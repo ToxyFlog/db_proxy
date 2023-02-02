@@ -1,19 +1,19 @@
 #ifndef PG_CLIENT_H
 #define PG_CLIENT_H
 
-#include <vector>
-#include <string>
 #include <optional>
+#include <string>
+#include <vector>
 #include "libpq-fe.h"
 
 struct Column {
     std::string name;
     std::string type;
-    bool is_nullable;
+    bool nullable;
 };
 
 struct Resource {
-    std::string connection_string;
+    std::string connectionString;
     std::string schema;
     std::string table;
     std::vector<Column> columns;

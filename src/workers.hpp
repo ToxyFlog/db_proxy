@@ -1,14 +1,13 @@
 #ifndef WORKERS_H
 #define WORKERS_H
 
-#include "utils.hpp"
-#include "pg_client.hpp"
-#include "work_queue.hpp"
+#include "pgClient.hpp"
+#include "workQueue.hpp"
 
 extern std::vector<Resource> resources;
-extern WorkQueue work_queue;
+extern WorkQueue workQueue;
 
-void create_workers();
-void stop_workers();
+void createWorkers();
+void stopWorkers();
 
 #endif // WORKERS_H

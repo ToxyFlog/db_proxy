@@ -1,62 +1,50 @@
 #ifndef WRITE_H
 #define WRITE_H
 
+#include <cstdlib>
 #include <string>
-#include <cstring>
-#include <unistd.h>
-#include "utils.hpp"
 
 static const size_t WRITE_BUFFER_SIZE = 1024;
-// TODO: write_buffer_size is assumed to be >= string_len_t max value
 
-#define _flush() {                                                                            \
-    while (_write_head != _write_buffer) {                                                    \
-        int result = write(_write_fd, _write_buffer, WRITE_BUFFER_SIZE - _write_buffer_size); \
-        if (result == -1) *_write_error_variable = true;                                      \
-        _write_head -= result;                                                                \
-        _write_buffer_size += result;                                                         \
-    }                                                                                         \
+#define writeVariable(fd, type, value) { \
+    type temp = value;                   \
+    write(fd, &temp, sizeof(type));      \
 }
 
-#define _write_to_buffer(source, length) {    \
-    if (length > _write_buffer_size) _flush() \
-    std::memcpy(_write_head, source, length); \
-    _write_head += length;                    \
-    _write_buffer_size -= length;             \
-}
+class Write {
+private:
+    int fd;
+    bool error = false;
 
-#define begin_write(fd, error_variable)                         \
-{                                                               \
-    int _write_fd = fd;                                         \
-    char _write_buffer[WRITE_BUFFER_SIZE];                      \
-    char *_write_head = _write_buffer;                          \
-    size_t _write_buffer_size = WRITE_BUFFER_SIZE;              \
-    bool *_write_error_variable = error_variable;
+    char buffer[WRITE_BUFFER_SIZE];
+    size_t offset = 0;
 
-#define write_variable_immediate(fd, type, value) { \
-    type temp = value;                              \
-    write(fd, &temp, sizeof(type));                 \
-}
+    void writeToBuffer(char *source, size_t length);
+    void flush();
 
-#define write_variable(type, value) {      \
-    type temp = value;                     \
-    _write_to_buffer(&temp, sizeof(temp)); \
-}
+    inline void variable(auto value) { writeToBuffer((char*) &value, sizeof(value)); }
+    void c_str(const char *str);
+    void str(std::string str);
+public:
+    Write(int _fd);
+    ~Write();
 
-#define write_c_str(str) {                              \
-    string_len_t string_length = strlen(str);           \
-    write_variable(string_len_t, htons(string_length)); \
-    _write_to_buffer(str, string_length);               \
-}
+    bool operator() (std::string value) {
+        str(value);
+        return !error;
+    }
 
-#define write_str(str) {                                 \
-    string_len_t string_length = str.size();             \
-    write_variable(string_len_t, htons(string_length));  \
-    _write_to_buffer(str.c_str(), string_length);        \
-}
+    bool operator() (const char *value) {
+        c_str(value);
+        return !error;
+    }
 
-#define end_write() \
-    _flush()        \
-}
+    bool operator() (auto value) {
+        variable(value);
+        return !error;
+    }
+
+    bool finish();
+};
 
 #endif // WRITE_H

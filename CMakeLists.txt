@@ -1,6 +1,6 @@
-SET(COMMON_FILES src/utils.cpp)
-SET(CLIENT_FILES src/client_app.cpp src/client.cpp)
-SET(SERVER_FILES src/server.cpp src/tcp_server.cpp src/workers.cpp src/work_queue.cpp src/pg_client.cpp)
+SET(COMMON_FILES src/utils.cpp src/write.cpp)
+SET(CLIENT_FILES src/clientApp.cpp src/client.cpp)
+SET(SERVER_FILES src/main.cpp src/server.cpp src/workers.cpp src/workQueue.cpp src/pgClient.cpp)
 
 
 cmake_minimum_required(VERSION 3.25.1)

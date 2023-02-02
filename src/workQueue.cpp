@@ -1,7 +1,7 @@
-#include <queue>
-#include <mutex>
 #include <condition_variable>
-#include "work_queue.hpp"
+#include <mutex>
+#include <queue>
+#include "workQueue.hpp"
 
 Batch WorkQueue::pop() {
     std::unique_lock lock(mutex);
@@ -23,7 +23,7 @@ void WorkQueue::push(Batch value) {
     cv.notify_one();
 }
 
-void WorkQueue::stop_waiting() {
+void WorkQueue::stopWaiting() {
     quit = true;
     cv.notify_all();
 }
