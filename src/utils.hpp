@@ -9,7 +9,7 @@ uint64_t unixTimeInMilliseconds();
 int setFlag(int fd, int flag, bool value);
 std::string join(std::vector<std::string> &strings, char delimiter);
 
-#define min(x, y) ((x) < (y) ? x : y)
-#define max(x, y) ((x) > (y) ? x : y)
+#define min(x, y) (x < y ? x : y)
+#define max(x, y) (x > y ? x : y)
 
 #endif // UTILS_H

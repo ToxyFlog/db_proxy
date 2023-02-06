@@ -13,6 +13,7 @@ void Write::flush() {
     int oldFlag = setFlag(fd, O_NONBLOCK, false);
     if (oldFlag == -1) error = true;
 
+    // TODO: set timer during which next write has to complete, or error occurs OR wait 'till it's writeable and write with non-blocking IO 
     if (write(fd, buffer, offset) == -1) error = true;
     offset = 0;
 
@@ -22,6 +23,7 @@ void Write::flush() {
 void Write::writeToBuffer(char *source, size_t length) {
     if (length > WRITE_BUFFER_SIZE) {
         flush();
+        // TODO: this write might get stuck + it can be either blocking or non-blocking as no asserts/sets are made
         if (write(fd, source, length) == -1) error = true;
         return;
     }
@@ -38,18 +40,16 @@ void Write::writeToBuffer(char *source, size_t length) {
     }
 }
 
-void Write::c_str(const char *str) {
-    RequestStringLength stringLength = strlen(str);
-    if (WRITE_BUFFER_SIZE - offset < sizeof(RequestStringLength)) flush();
+void Write::c_str(const char *string) {
+    RequestStringLength stringLength = strlen(string);
     variable<RequestStringLength>(htons(stringLength));
-    writeToBuffer((char*) str, stringLength);
+    writeToBuffer((char*) string, stringLength);
 }
 
-void Write::str(std::string str) {
-    RequestStringLength stringLength = str.size();
-    if (WRITE_BUFFER_SIZE - offset < sizeof(RequestStringLength)) flush();
+void Write::str(std::string string) {
+    RequestStringLength stringLength = string.size();
     variable<RequestStringLength>(htons(stringLength));
-    writeToBuffer((char*) str.c_str(), stringLength);
+    writeToBuffer((char*) string.c_str(), stringLength);
 }
 
 bool Write::finish() {

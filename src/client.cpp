@@ -11,7 +11,6 @@
 
 static const size_t READ_BUFFER_LENGTH = 1024;
 
-Client::Client(): fd(-1) {}
 Client::Client(const char *ipAddress, uint16_t port) { connect(ipAddress, port); }
 Client::~Client() { disconnect(); }
 
@@ -25,7 +24,7 @@ sockaddr_in Client::createAddress(const char *ipAddress, uint16_t port) {
 
 bool Client::waitForResponse() {
     pollfd pfd {fd, POLLIN, 0};
-    if (!poll(&pfd, 1, RESPONSE_TIMEOUT_MS) || pfd.revents & POLLHUP) return false;
+    if (!poll(&pfd, 1, RESPONSE_TIMEOUT_SECONDS * 1000) || pfd.revents & POLLHUP) return false;
     return true;
 }
 
@@ -41,7 +40,7 @@ void Client::connect(const char *ipAddress, uint16_t port) {
     if (setFlag(fd, O_NONBLOCK, false) == -1) exitWithError("Error while setting a flag!");
 
     pollfd pfd {fd, POLLOUT, 0};
-    if (!poll(&pfd, 1, CONNECTION_TIMEOUT_MS) || pfd.revents == POLLHUP) exitWithError("Couldn't connect to server!");
+    if (!poll(&pfd, 1, CONNECTION_TIMEOUT_SECONDS * 1000) || pfd.revents == POLLHUP) exitWithError("Couldn't connect to server!");
 }
 
 std::optional<ResourceId> Client::createResource(std::string connectionString, std::string schema, std::string table) {
@@ -61,7 +60,7 @@ std::optional<ResourceId> Client::createResource(std::string connectionString, s
     return ntohl(resource);
 }
 
-std::optional<std::vector<std::vector<std::string>>> Client::select(ResourceId resource, std::vector<std::string> columns) {
+std::optional<SelectResult> Client::select(ResourceId resource, std::vector<std::string> columns) {
     RequestLength length = sizeof(RequestType) + sizeof(ResourceId);
     for (auto &column : columns) length += sizeof(RequestStringLength) + column.size();
 
@@ -70,30 +69,48 @@ std::optional<std::vector<std::vector<std::string>>> Client::select(ResourceId r
     write((RequestType) SELECT);
     write((ResourceId) htonl(resource));
     for (auto &column : columns) write(column);
-    if (!write.finish()) return std::nullopt;
+    if (!write.finish() || !waitForResponse()) return std::nullopt;
 
-    RequestStringLength stringLength = 0;
+    int tuples, fields;
+    read(fd, &tuples, sizeof(tuples));
+    tuples = ntohl(tuples);
+    read(fd, &fields, sizeof(fields));
+    fields = htonl(fields);
+
+    int bufferStringLengthOffset = 0;
+    ssize_t numRead, offset;
     char buffer[READ_BUFFER_LENGTH];
-    std::vector<std::vector<std::string>> result = {{}};
+    size_t index = -1;
+    SelectResult result(tuples, std::vector<char*>(fields));
+    RequestStringLength stringLength = 0, stringOffset = 0;
     while (waitForResponse()) {
-        ssize_t numRead, offset = 0;
-        if ((numRead = read(fd, buffer, READ_BUFFER_LENGTH)) == -1) return std::nullopt;
+        offset = 0;
+        if ((numRead = read(fd, buffer + bufferStringLengthOffset, READ_BUFFER_LENGTH - bufferStringLengthOffset)) == -1) return std::nullopt;
+        numRead += bufferStringLengthOffset;
+        bufferStringLengthOffset = 0;
 
         while (offset < numRead) {
-            if (stringLength == 0) {
-                stringLength = ntohs(*(RequestStringLength*) &buffer[offset]);
-                offset += sizeof(RequestStringLength);
+            if (stringOffset < stringLength) {
+                size_t readLength = min(stringLength - stringOffset, numRead - offset);
+                std::memcpy(result[index / fields][index % fields] + stringOffset, buffer + offset, readLength);
+                stringOffset += readLength;
+                offset += readLength;
+                continue;
             }
+
+            if (sizeof(RequestStringLength) + offset > numRead) {
+                bufferStringLengthOffset = numRead - offset;
+                std::memcpy(buffer, buffer + offset, bufferStringLengthOffset);
+                offset += sizeof(RequestStringLength);
+                break;
+            }
+
+            stringOffset = 0;
+            stringLength = ntohs(*(RequestStringLength*) &buffer[offset]);
+            offset += sizeof(RequestStringLength);
             if (stringLength == 0) return result;
 
-            if (result.back().size() == columns.size()) result.push_back({});
-
-            if (offset < numRead) {
-                size_t readLength = min(stringLength, numRead - offset);
-                result.back().push_back(std::string(buffer + offset, buffer + offset + readLength));
-                stringLength -= readLength;
-                offset += readLength;
-            }
+            result[++index / fields][index % fields] = (char*) malloc(sizeof(char) * stringLength);
         }
     }
 
@@ -105,4 +122,10 @@ void Client::disconnect() {
 
     close(fd);
     fd = -1;
+}
+
+void Client::clear(SelectResult &tuples) {
+    for (auto &tuple : tuples)
+        for (auto field : tuple)
+            free(field);
 }

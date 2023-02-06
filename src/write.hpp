@@ -4,7 +4,7 @@
 #include <cstdlib>
 #include <string>
 
-static const size_t WRITE_BUFFER_SIZE = 1024;
+static const size_t WRITE_BUFFER_SIZE = 4096;
 
 #define writeVariable(fd, type, value) { \
     type temp = value;                   \
@@ -29,20 +29,10 @@ public:
     Write(int _fd);
     ~Write();
 
-    bool operator() (std::string value) {
-        str(value);
-        return !error;
-    }
-
-    bool operator() (const char *value) {
-        c_str(value);
-        return !error;
-    }
-
-    bool operator() (auto value) {
-        variable(value);
-        return !error;
-    }
+    bool operator() (std::string value) { str(value); return !error; }
+    bool operator() (const char *value) { c_str(value); return !error; }
+    bool operator() (char *value) { c_str(value); return !error; }
+    bool operator() (auto value) { variable(value); return !error; }
 
     bool finish();
 };

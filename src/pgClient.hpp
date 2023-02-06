@@ -19,7 +19,18 @@ struct Resource {
     std::vector<Column> columns;
 };
 
-typedef std::vector<std::vector<std::string>> PGResponse;
+class PGResponse {
+private:
+    char **array;
+    PGresult *result;
+public:
+    int tuples, fields;
+
+    PGResponse(PGresult *_result);
+
+    char *get(int tuple, int field);
+    void clear();
+};
 
 class PGClient {
 private:

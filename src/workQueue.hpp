@@ -19,12 +19,11 @@ struct Operation {
     OperationData data;
 };
 
-typedef std::variant<void*, Columns, Operation> SharedData;
 struct Batch {
     Type type;
     int resourceId;
     uint64_t updatedAt;
-    SharedData sharedData;
+    Columns columns;
     std::vector<Operation> operations;
 };
 

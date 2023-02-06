@@ -22,14 +22,14 @@ std::vector<Resource> resources;
 std::mutex resourcesMutex;
 
 inline std::string selectColumns(std::vector<std::string> &columns, std::string &table) {
-    return "SELECT " + join(columns, ',') + " FROM " + table + " ORDER BY num;";
+    return "SELECT " + join(columns, ',') + " FROM " + table;
 }
 inline std::string selectTableSchema(std::string &table) {
     return "SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_name = '" + table + "';";
 }
 
 void createResource(PGClient &client, Batch &batch) {
-    Operation operation = std::get<Operation>(batch.sharedData);
+    Operation operation = batch.operations[0];
     Resource resource = std::get<Resource>(operation.data);
 
     if (!client.connect(resource)) {
@@ -38,16 +38,18 @@ void createResource(PGClient &client, Batch &batch) {
     }
 
     std::optional<PGResponse> response = client.query(selectTableSchema(resource.table));
-    if (!response.has_value() || response.value().size() == 0) {
+    if (!response.has_value()) {
         writeVariable(operation.fd, ResourceId, htonl(NO_RESOURCE));
         return;
     }
 
-    for (auto &tuple : response.value()) {
-        bool nullable = tuple[2] == "YES" || tuple[3].size() > 0;
-        Column column {tuple[0], tuple[1], nullable};
+    PGResponse tuples = response.value();
+    for (int tuple = 0;tuple < tuples.tuples;tuple++) {
+        bool nullable = strcmp(tuples.get(tuple, 2), "YES") == 0 || strlen(tuples.get(tuple, 3)) > 0;
+        Column column {tuples.get(tuple, 0), tuples.get(tuple, 1), nullable};
         resource.columns.push_back(column);
     }
+    tuples.clear();
 
     std::unique_lock resourcesLock(resourcesMutex);
     writeVariable(operation.fd, ResourceId, htonl(resources.size()));
@@ -57,15 +59,19 @@ void createResource(PGClient &client, Batch &batch) {
 
 void completeSelectOperation(Operation &operation, std::vector<std::string> &columns, PGResponse &response) {
     if (setFlag(operation.fd, O_NONBLOCK, false) == -1) return;
+
+    std::vector<int> fields;
     Columns currentColumns = std::get<Columns>(operation.data);
+    for (int field = 0;field < response.fields;field++)
+        if (currentColumns.contains(columns[field]))
+            fields.push_back(field);
 
     Write write(operation.fd);
-    for (auto &tuple : response) {
-        for (size_t column = 0;column < tuple.size();column++) {
-            if (!currentColumns.contains(columns[column])) continue;
-            if (!write(tuple[column])) return;
-        }
-    }
+    write(htonl(response.tuples));
+    write(htonl(fields.size()));
+    for (int tuple = 0;tuple < response.tuples;tuple++)
+        for (auto field : fields)
+            if (!write(response.get(tuple, field))) return;
     write((RequestStringLength) 0);
     write.finish();
 
@@ -73,24 +79,17 @@ void completeSelectOperation(Operation &operation, std::vector<std::string> &col
 }
 
 void select(PGClient &client, Batch &batch) {
-    Columns columnsSet = std::get<Columns>(batch.sharedData);
-    std::vector<std::string> columns = std::vector<std::string>(columnsSet.begin(), columnsSet.end());
-
+    std::vector<std::string> columns = std::vector<std::string>(batch.columns.begin(), batch.columns.end());
     std::optional<PGResponse> response = client.query(selectColumns(columns, resources[batch.resourceId].table));
     if (!response.has_value()) return;
 
     PGResponse tuples = response.value();
     for (auto &operation : batch.operations) completeSelectOperation(operation, columns, tuples);
+    tuples.clear();
 }
 
 void insert(PGClient &client, Batch &batch) {
-    (void) client;
-    // Something something = std::any_cast<Something>(batch.shared_data);
-
-    for (auto &operation : batch.operations) {
-    (void) operation;
-        // Something something = std::any_cast<Something>(operation.data);
-    }
+    (void) client; (void) batch;
 }
 
 void processBatches() {

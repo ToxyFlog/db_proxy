@@ -7,6 +7,24 @@
 
 static const char *CONNECTION_STRING_PARAMS = "connect_timeout=10";
 
+PGResponse::PGResponse(PGresult *_result): result(_result) {
+    tuples = PQntuples(result);
+    fields = PQnfields(result);
+
+    array = (char**) malloc(sizeof(char*) * tuples * fields);
+    for (int i = 0;i < tuples * fields;i++) array[i] = PQgetvalue(result, i / fields, i % fields);
+}
+
+char *PGResponse::get(int tuple, int field) {
+    if (tuple >= tuples) return nullptr;
+    return array[tuple * fields + field];
+};
+
+void PGResponse::clear() {
+    free(array);
+    PQclear(result);
+}
+
 bool PGClient::connect(Resource &resource) {
     disconnect();
 
@@ -33,17 +51,7 @@ std::optional<PGResponse> PGClient::query(const char *sql) {
         return std::nullopt;
     }
 
-    PGResponse result;
-    for (int tuple = 0; tuple < PQntuples(response); tuple++) {
-        result.push_back({});
-        for (int field = 0; field < PQnfields(response); field++) {
-            std::string value = PQgetvalue(response, tuple, field);
-            result[tuple].push_back(value);
-        }
-    }
-
-    PQclear(response);
-    return result;
+    return PGResponse(response);
 }
 
 void PGClient::disconnect() {

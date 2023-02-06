@@ -35,8 +35,11 @@ void Server::startListening(uint16_t port) {
 }
 
 void Server::acceptConnections() {
-    int connection;
-    while ((connection = accept(fd, NULL, NULL)) != -1) connections.push_back({connection, "", 0});
+    int connectionFd = accept(fd, NULL, NULL);
+    while (connectionFd != -1) {
+        Connection connection {connectionFd, "", 0};
+        connections.push_back(connection);
+    }
     if (errno != EWOULDBLOCK) exitWithError("Couldn't accept connection!");
 }
 
@@ -45,15 +48,16 @@ void Server::readRequests() {
     char buffer[BUFFER_LENGTH];
     for (size_t i = 0;i < connections.size();i++) {
         Connection &connection = connections[i];
-        bool error = false;
+        bool closeConnection = false;
 
         if (connection.length == 0) {
             RequestLength length;
             numRead = read(connection.fd, &length, sizeof(length));
-            if (numRead == -1 && errno == EWOULDBLOCK) continue;
 
-            if (numRead != sizeof(length)) error = true;
-            else length = ntohl(length);
+            if (numRead == -1 && errno == EWOULDBLOCK) continue;
+            closeConnection = numRead != sizeof(length);
+
+            length = ntohl(length);
             connection.length = length;
         }
 
@@ -62,13 +66,13 @@ void Server::readRequests() {
             connection.request += std::string(buffer, buffer + numRead);
 
             if (connection.length == 0) {
-                if (!handler(connection.fd, connection.request)) error = true;
+                if (!handler(connection.fd, connection.request)) closeConnection = true;
                 connection.request = "";
                 break;
             }
         }
 
-        if (error || (numRead == -1 && errno != EWOULDBLOCK)) {
+        if (closeConnection || (numRead == -1 && errno != EWOULDBLOCK)) {
             close(connection.fd);
             connections.erase(connections.begin() + i);
             i--;
