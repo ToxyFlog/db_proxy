@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <unistd.h>
+#include <sys/socket.h>
 #include "config.hpp"
 #include "request.hpp"
 #include "utils.hpp"
@@ -22,12 +23,6 @@ sockaddr_in Client::createAddress(const char *ipAddress, uint16_t port) {
     return address;
 }
 
-bool Client::waitForResponse() {
-    pollfd pfd {fd, POLLIN, 0};
-    if (!poll(&pfd, 1, RESPONSE_TIMEOUT_SECONDS * 1000) || pfd.revents & POLLHUP) return false;
-    return true;
-}
-
 void Client::connect(const char *ipAddress, uint16_t port) {
     disconnect();
 
@@ -40,7 +35,10 @@ void Client::connect(const char *ipAddress, uint16_t port) {
     if (setFlag(fd, O_NONBLOCK, false) == -1) exitWithError("Error while setting a flag!");
 
     pollfd pfd {fd, POLLOUT, 0};
-    if (!poll(&pfd, 1, CONNECTION_TIMEOUT_SECONDS * 1000) || pfd.revents == POLLHUP) exitWithError("Couldn't connect to server!");
+    if (!poll(&pfd, 1, CONNECT_TIMEOUT_SECONDS * 1000) || pfd.revents == POLLHUP) exitWithError("Couldn't connect to server!");
+
+    timeval value {READ_TIMEOUT_SECONDS, 0};
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &value, sizeof(timeval));
 }
 
 std::optional<ResourceId> Client::createResource(std::string connectionString, std::string schema, std::string table) {
@@ -53,7 +51,7 @@ std::optional<ResourceId> Client::createResource(std::string connectionString, s
     write(connectionString);
     write(schema);
     write(table);
-    if (!write.finish() || !waitForResponse()) return std::nullopt;
+    if (!write.finish()) return std::nullopt;
 
     ResourceId resource;
     if (read(fd, &resource, sizeof(resource)) == -1) return std::nullopt;
@@ -69,27 +67,26 @@ std::optional<SelectResult> Client::select(ResourceId resource, std::vector<std:
     write((RequestType) SELECT);
     write((ResourceId) htonl(resource));
     for (auto &column : columns) write(column);
-    if (!write.finish() || !waitForResponse()) return std::nullopt;
+    if (!write.finish()) return std::nullopt;
 
     int tuples, fields;
-    read(fd, &tuples, sizeof(tuples));
+    if (read(fd, &tuples, sizeof(tuples)) == -1) return std::nullopt;
     tuples = ntohl(tuples);
-    read(fd, &fields, sizeof(fields));
+    if (read(fd, &fields, sizeof(fields)) == -1) return std::nullopt;
     fields = htonl(fields);
 
-    int bufferStringLengthOffset = 0;
+    int bufferReadOffset = 0;
     ssize_t numRead, offset;
     char buffer[READ_BUFFER_LENGTH];
     size_t index = -1;
     SelectResult result(tuples, std::vector<char*>(fields));
     RequestStringLength stringLength = 0, stringOffset = 0;
-    while (waitForResponse()) {
-        offset = 0;
-        if ((numRead = read(fd, buffer + bufferStringLengthOffset, READ_BUFFER_LENGTH - bufferStringLengthOffset)) == -1) return std::nullopt;
-        numRead += bufferStringLengthOffset;
-        bufferStringLengthOffset = 0;
+    for (;;) {
+        if ((numRead = read(fd, buffer + bufferReadOffset, READ_BUFFER_LENGTH - bufferReadOffset)) == -1) break;
+        numRead += bufferReadOffset;
+        bufferReadOffset = 0;
 
-        while (offset < numRead) {
+        for (offset = 0; offset < numRead;) {
             if (stringOffset < stringLength) {
                 size_t readLength = min(stringLength - stringOffset, numRead - offset);
                 std::memcpy(result[index / fields][index % fields] + stringOffset, buffer + offset, readLength);
@@ -99,8 +96,8 @@ std::optional<SelectResult> Client::select(ResourceId resource, std::vector<std:
             }
 
             if (sizeof(RequestStringLength) + offset > numRead) {
-                bufferStringLengthOffset = numRead - offset;
-                std::memcpy(buffer, buffer + offset, bufferStringLengthOffset);
+                bufferReadOffset = numRead - offset;
+                std::memcpy(buffer, buffer + offset, bufferReadOffset);
                 offset += sizeof(RequestStringLength);
                 break;
             }
@@ -114,6 +111,7 @@ std::optional<SelectResult> Client::select(ResourceId resource, std::vector<std:
         }
     }
 
+    while (index > 0) free(result[index / fields][index-- % fields]);
     return std::nullopt;
 }
 

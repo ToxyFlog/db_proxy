@@ -35,8 +35,8 @@ void Server::startListening(uint16_t port) {
 }
 
 void Server::acceptConnections() {
-    int connectionFd = accept(fd, NULL, NULL);
-    while (connectionFd != -1) {
+    int connectionFd;
+    while ((connectionFd = accept(fd, NULL, NULL)) != -1) {
         Connection connection {connectionFd, "", 0};
         connections.push_back(connection);
     }
@@ -55,7 +55,7 @@ void Server::readRequests() {
             numRead = read(connection.fd, &length, sizeof(length));
 
             if (numRead == -1 && errno == EWOULDBLOCK) continue;
-            closeConnection = numRead != sizeof(length);
+            if (numRead != sizeof(length)) closeConnection = true;
 
             length = ntohl(length);
             connection.length = length;

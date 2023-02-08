@@ -2,28 +2,28 @@
 #include <string>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/socket.h>
+#include "config.hpp"
 #include "request.hpp"
 #include "utils.hpp"
 #include "write.hpp"
 
-Write::Write(int _fd): fd(_fd) {}
-Write::~Write() { flush(); }
+Write::Write(int _fd): fd(_fd) {
+    oldBonBlockFlag = setFlag(fd, O_NONBLOCK, false);
 
-void Write::flush() {
-    int oldFlag = setFlag(fd, O_NONBLOCK, false);
-    if (oldFlag == -1) error = true;
+    timeval value {WRITE_TIMEOUT_SECONDS, 0};
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &value, sizeof(timeval));
+}
+Write::~Write() { finish(); }
 
-    // TODO: set timer during which next write has to complete, or error occurs OR wait 'till it's writeable and write with non-blocking IO 
+inline void Write::flush() {
     if (write(fd, buffer, offset) == -1) error = true;
     offset = 0;
-
-    if (setFlag(fd, O_NONBLOCK, oldFlag)) error = true;
 }
 
 void Write::writeToBuffer(char *source, size_t length) {
     if (length > WRITE_BUFFER_SIZE) {
         flush();
-        // TODO: this write might get stuck + it can be either blocking or non-blocking as no asserts/sets are made
         if (write(fd, source, length) == -1) error = true;
         return;
     }
@@ -53,6 +53,13 @@ void Write::str(std::string string) {
 }
 
 bool Write::finish() {
+    if (finished) return !error;
+    finished = true;
+
     flush();
+    timeval value {0, 0};
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &value, sizeof(timeval));
+    setFlag(fd, O_NONBLOCK, oldBonBlockFlag);
+
     return !error;
 }

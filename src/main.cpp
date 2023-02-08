@@ -1,6 +1,5 @@
 #include <csignal>
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <variant>
 #include <vector>
@@ -14,7 +13,12 @@
 static const int MIN_REQUEST_LENGTH = 5;
 
 static volatile sig_atomic_t isRunning = 1;
-void signalHandler(int signal) { if (signal != SIGPIPE) isRunning = 0; }
+void signalHandler(int signal) {
+    if (signal == SIGPIPE) return;
+
+    if (isRunning == 0) exit(EXIT_FAILURE);
+    isRunning = 0;
+}
 
 std::vector<Batch> batches;
 
@@ -89,13 +93,14 @@ bool requestHandler(int fd, std::string &request) {
 
 void setupSignalHandlers() {
     struct sigaction action;
+    sigemptyset(&action.sa_mask);
     action.sa_handler = signalHandler;
     action.sa_flags = 0;
-    action.sa_mask = 0;
 
-    sigaction(SIGINT, &action, NULL);
-    sigaction(SIGTERM, &action, NULL);
-    sigaction(SIGPIPE, &action, NULL);
+    if (sigaction(SIGINT,  &action, NULL) == -1 ||
+        sigaction(SIGTERM, &action, NULL) == -1 ||
+        sigaction(SIGPIPE, &action, NULL) == -1)
+        exitWithError("Couldn't set signal handlers!");
 }
 
 int main() {

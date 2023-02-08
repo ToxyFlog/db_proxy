@@ -14,7 +14,6 @@ private:
     int fd = -1;
 
     sockaddr_in createAddress(const char *ipAddress, uint16_t port);
-    bool waitForResponse();
 public:
     Client(const char *ipAddress, uint16_t port);
     ~Client();

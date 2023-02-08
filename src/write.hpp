@@ -13,14 +13,14 @@ static const size_t WRITE_BUFFER_SIZE = 4096;
 
 class Write {
 private:
-    int fd;
-    bool error = false;
+    int fd, oldBonBlockFlag;
+    bool error = false, finished = false;
 
     char buffer[WRITE_BUFFER_SIZE];
     size_t offset = 0;
 
     void writeToBuffer(char *source, size_t length);
-    void flush();
+    inline void flush();
 
     inline void variable(auto value) { writeToBuffer((char*) &value, sizeof(value)); }
     void c_str(const char *str);
