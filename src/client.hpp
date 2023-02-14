@@ -21,10 +21,12 @@ public:
     void connect(const char *ipAddress, uint16_t port);
     void disconnect();
 
-    std::optional<ResourceId> createResource(std::string connectionString, std::string schema, std::string table);
-    std::optional<SelectResult> select(ResourceId resource, std::vector<std::string> columns);
+    ResourceId createResource(std::string connectionString, std::string schema, std::string table);
 
-    static void clear(SelectResult &select);
+    std::optional<SelectResult> select(ResourceId resource, std::vector<std::string> columns);
+    static void clearResult(SelectResult &select);
+
+    int insert(ResourceId resource, std::vector<std::string> columns, std::vector<std::vector<std::string>> values);
 };
 
 #endif // CLIENT_H

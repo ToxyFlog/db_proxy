@@ -23,14 +23,3 @@ int setFlag(int fd, int flag, bool value) {
 
     return oldValue;
 }
-
-std::string join(std::vector<std::string> &strings, char delimiter) {
-    std::string result = "";
-
-    for (size_t i = 0;i < strings.size();i++) {
-        if (i > 0) result.push_back(delimiter);
-        result += strings[i];
-    }
-
-    return result;
-}

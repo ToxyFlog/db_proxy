@@ -3,20 +3,22 @@
 
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include "libpq-fe.h"
 
 struct Column {
     std::string name;
     std::string type;
-    bool nullable;
+    bool optional;
 };
 
 struct Resource {
     std::string connectionString;
     std::string schema;
     std::string table;
-    std::vector<Column> columns;
+    int requiredColumns;
+    std::unordered_map<std::string, Column> columns;
 };
 
 class PGResponse {

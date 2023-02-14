@@ -10,7 +10,7 @@
 #include "config.hpp"
 #include "server.hpp"
 
-static const int BUFFER_LENGTH = 256;
+static const int READ_BUFFER_LENGTH = 1024;
 
 Server::Server(RequestHandler _handler): handler(_handler) {}
 
@@ -45,7 +45,7 @@ void Server::acceptConnections() {
 
 void Server::readRequests() {
     ssize_t numRead;
-    char buffer[BUFFER_LENGTH];
+    char buffer[READ_BUFFER_LENGTH];
     for (size_t i = 0;i < connections.size();i++) {
         Connection &connection = connections[i];
         bool closeConnection = false;
@@ -61,21 +61,19 @@ void Server::readRequests() {
             connection.length = length;
         }
 
-        while ((numRead = read(connection.fd, buffer, min(connection.length, BUFFER_LENGTH))) > 0) {
+        while (connection.length > 0 && (numRead = read(connection.fd, buffer, min(connection.length, READ_BUFFER_LENGTH))) > 0) {
             connection.length -= numRead;
             connection.request += std::string(buffer, buffer + numRead);
+        }
 
-            if (connection.length == 0) {
-                if (!handler(connection.fd, connection.request)) closeConnection = true;
-                connection.request = "";
-                break;
-            }
+        if (connection.length == 0) {
+            if (!handler(connection.fd, connection.request)) closeConnection = true;
+            connection.request = "";
         }
 
         if (closeConnection || (numRead == -1 && errno != EWOULDBLOCK)) {
             close(connection.fd);
-            connections.erase(connections.begin() + i);
-            i--;
+            connections.erase(connections.begin() + i--);
         }
     }
 }

@@ -46,7 +46,7 @@ bool PGClient::connect(Resource &resource) {
 std::optional<PGResponse> PGClient::query(std::string sql) { return query(sql.c_str()); };
 std::optional<PGResponse> PGClient::query(const char *sql) {
     PGresult *response = PQexec(connection, sql);
-    if (PQresultStatus(response) != PGRES_TUPLES_OK) {
+    if (PQresultStatus(response) > PGRES_TUPLES_OK) {
         PQclear(response);
         return std::nullopt;
     }

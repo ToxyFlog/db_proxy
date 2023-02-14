@@ -41,7 +41,7 @@ void Client::connect(const char *ipAddress, uint16_t port) {
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &value, sizeof(timeval));
 }
 
-std::optional<ResourceId> Client::createResource(std::string connectionString, std::string schema, std::string table) {
+ResourceId Client::createResource(std::string connectionString, std::string schema, std::string table) {
     RequestLength length = sizeof(RequestType) + sizeof(ResourceId) + 3 * sizeof(RequestStringLength) + connectionString.size() + schema.size() + table.size();
 
     Write write(fd);
@@ -51,10 +51,10 @@ std::optional<ResourceId> Client::createResource(std::string connectionString, s
     write(connectionString);
     write(schema);
     write(table);
-    if (!write.finish()) return std::nullopt;
+    if (!write.finish()) return -1;
 
     ResourceId resource;
-    if (read(fd, &resource, sizeof(resource)) == -1) return std::nullopt;
+    if (read(fd, &resource, sizeof(resource)) == -1) return -1;
     return ntohl(resource);
 }
 
@@ -76,17 +76,16 @@ std::optional<SelectResult> Client::select(ResourceId resource, std::vector<std:
     fields = htonl(fields);
 
     int bufferReadOffset = 0;
-    ssize_t numRead, offset;
+    ssize_t numRead;
     char buffer[READ_BUFFER_LENGTH];
-    size_t index = -1;
+    int index = -1;
     SelectResult result(tuples, std::vector<char*>(fields));
     RequestStringLength stringLength = 0, stringOffset = 0;
-    for (;;) {
-        if ((numRead = read(fd, buffer + bufferReadOffset, READ_BUFFER_LENGTH - bufferReadOffset)) == -1) break;
+    while ((numRead = read(fd, buffer + bufferReadOffset, READ_BUFFER_LENGTH - bufferReadOffset)) > 0) {
         numRead += bufferReadOffset;
         bufferReadOffset = 0;
 
-        for (offset = 0; offset < numRead;) {
+        for (ssize_t offset = 0;offset < numRead;) {
             if (stringOffset < stringLength) {
                 size_t readLength = min(stringLength - stringOffset, numRead - offset);
                 std::memcpy(result[index / fields][index % fields] + stringOffset, buffer + offset, readLength);
@@ -95,10 +94,9 @@ std::optional<SelectResult> Client::select(ResourceId resource, std::vector<std:
                 continue;
             }
 
-            if (sizeof(RequestStringLength) + offset > numRead) {
+            if (offset + sizeof(RequestStringLength) > (size_t) numRead) {
                 bufferReadOffset = numRead - offset;
                 std::memcpy(buffer, buffer + offset, bufferReadOffset);
-                offset += sizeof(RequestStringLength);
                 break;
             }
 
@@ -115,6 +113,29 @@ std::optional<SelectResult> Client::select(ResourceId resource, std::vector<std:
     return std::nullopt;
 }
 
+int Client::insert(ResourceId resource, std::vector<std::string> columns, std::vector<std::vector<std::string>> tuples) {
+    RequestLength length = sizeof(RequestType) + sizeof(ResourceId) + sizeof(RequestStringLength);
+    for (auto &column : columns) length += column.size() + sizeof(RequestStringLength);
+    for (auto &tuple : tuples)
+        for (auto &value : tuple)
+            length += value.size() + sizeof(RequestStringLength);
+
+    Write write(fd);
+    write((RequestLength) htonl(length));
+    write((RequestType) INSERT);
+    write((ResourceId) htonl(resource));
+    write((RequestStringLength) htons(columns.size()));
+    for (auto &column : columns) write(column);
+    for (auto &tuple : tuples)
+        for (auto &value : tuple)
+            write(value);
+    if (!write.finish()) return -1;
+
+    int32_t response;
+    if (read(fd, &response, sizeof(response)) == -1) return -1;
+    return ntohl(response);
+}
+
 void Client::disconnect() {
     if (fd == -1) return;
 
@@ -122,7 +143,7 @@ void Client::disconnect() {
     fd = -1;
 }
 
-void Client::clear(SelectResult &tuples) {
+void Client::clearResult(SelectResult &tuples) {
     for (auto &tuple : tuples)
         for (auto field : tuple)
             free(field);

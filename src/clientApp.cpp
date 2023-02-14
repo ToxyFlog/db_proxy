@@ -7,33 +7,43 @@
 #include "utils.hpp"
 #include "config.hpp"
 
+static const Type action = INSERT;
+
 static const std::vector<std::string> columns = {"string", "test", "num"};
 
 std::mutex mutex;
 std::condition_variable cv;
 int counter = 0;
 
-void threadFunction(int threadNumber, ResourceId resource, int columnsNumber) {
+void threadFunction(int threadNumber, ResourceId resource) {
     Client client("127.0.0.1", PORT);
 
-    std::optional<SelectResult> response = client.select(resource, std::vector(columns.begin(), columns.begin() + columnsNumber));
-    if (!response.has_value()) exitWithError("Couldn't select columns!");
+    if (action == SELECT) {
+        std::optional<SelectResult> response = client.select(resource, columns);
+        if (!response.has_value()) exitWithError("Select failed!");
 
-    SelectResult data = response.value();
-    for (size_t i = 0;i < data.size();i++) {
-        printf("[%d] ", threadNumber);
-        for (auto value : data[i])
-            printf("%s ", value);
-        printf("\n");
+        SelectResult data = response.value();
+        for (size_t i = 0;i < data.size();i++) {
+            printf("[%d] ", threadNumber);
+            for (auto value : data[i]) printf("%s ", value);
+            printf("\n");
+        }
+        Client::clearResult(data);
+    } else if (action == INSERT) {
+        std::vector<std::vector<std::string>> values;
+        for (int i = 0;i < 20;i++) values.push_back({"string", std::to_string(threadNumber), std::to_string(i)});
+
+        int response = client.insert(resource, columns, values);
+        if (response == -1) exitWithError("Insert failed!");
+        printf("[%d] %d\n", threadNumber, response);
     }
-    Client::clear(data);
 
     std::lock_guard lock(mutex);
     if (--counter == 0) cv.notify_all();
 }
 
-void createThread(ResourceId resource, int columnsNumber) {
-    std::thread thread(threadFunction, counter++, resource, columnsNumber);
+void createThread(ResourceId resource) {
+    std::thread thread(threadFunction, counter++, resource);
     thread.detach();
 }
 
@@ -43,13 +53,12 @@ int main() {
     std::string connectionString = "postgresql://root@127.0.0.1:5432/postgres?connect_timeout=5";
     std::string schema = "public";
     std::string table = "test_table";
-    std::optional<ResourceId> response = client.createResource(connectionString, schema, table);
+    ResourceId resource = client.createResource(connectionString, schema, table);
 
-    if (!response.has_value()) exitWithError("Couldn't create resource!");
+    if (resource == -1) exitWithError("Couldn't create resource!");
     client.disconnect();
 
-    ResourceId resource = response.value();
-    for (int i = 0;i < 1;i++) createThread(resource, 1);
+    for (int i = 0;i < 4;i++) createThread(resource);
 
     std::unique_lock lock(mutex);
     cv.wait(lock, [](){ return counter == 0; });

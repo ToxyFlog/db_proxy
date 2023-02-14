@@ -1,7 +1,6 @@
 #include <csignal>
 #include <string>
 #include <unordered_set>
-#include <variant>
 #include <vector>
 #include "config.hpp"
 #include "server.hpp"
@@ -13,6 +12,8 @@
 static const int MIN_REQUEST_LENGTH = 5;
 
 static volatile sig_atomic_t isRunning = 1;
+std::vector<Batch> batches;
+
 void signalHandler(int signal) {
     if (signal == SIGPIPE) return;
 
@@ -20,21 +21,17 @@ void signalHandler(int signal) {
     isRunning = 0;
 }
 
-std::vector<Batch> batches;
-
 void dispatchBatches() {
     for (size_t i = 0;i < batches.size();i++) {
         Batch batch = batches[i];
-        if (unixTimeInMilliseconds() - batch.updatedAt >= BATCH_TIMEOUT_MS || batch.operations.size() >= BATCH_MAX_SIZE) {
-            workQueue.push(batch);
-            batches.erase(batches.begin() + i);
-            i--;
-        }
+        if (unixTimeInMilliseconds() - batch.updatedAt < BATCH_TIMEOUT_MS && batch.size() < BATCH_MAX_SIZE) continue;
+
+        workQueue.push(batch);
+        batches.erase(batches.begin() + i--);
     }
 }
 
 inline std::string readString(std::string request) { return request.substr(sizeof(RequestStringLength), ntohs(*(RequestStringLength*) &request[0])); }
-
 std::vector<std::string> readStringArray(std::string &request) {
     std::vector<std::string> result;
 
@@ -60,32 +57,59 @@ bool requestHandler(int fd, std::string &request) {
         std::vector<std::string> values = readStringArray(request);
         if (values.size() != 3) return false;
 
-        Resource resource {values[0], values[1], values[2], {}};
-        Operation operation {fd, resource};
-        Batch batch {CREATE_RESOURCE, -1, 0, {}, {operation}};
+        Resource resource {values[0], values[1], values[2], 0, {}};
+        Batch batch(fd, resource);
         workQueue.push(batch);
+
         return true;
     }
 
     if (type == SELECT) {
         std::vector<std::string> values = readStringArray(request);
-        Columns columns(values.begin(), values.end());
-        if (columns.size() == 0) return false;
+        if (values.size() == 0) return false;
 
-        Operation operation {fd, columns};
+        std::unordered_set<std::string> columns(values.begin(), values.end());
+        Select select {fd, columns};
+
         for (auto &batch : batches) {
             if (batch.type == type && batch.resourceId == resourceId) {
                 for (auto &column : columns) batch.columns.insert(column);
-                batch.operations.push_back(operation);
+                batch.selects.push_back(select);
                 return true;
             }
         }
 
-        Batch batch {SELECT, resourceId, unixTimeInMilliseconds(), columns, {operation}};
+        Batch batch(resourceId, columns, select);
         batches.push_back(batch);
         return true;
     } else if (type == INSERT) {
+        RequestStringLength columnNumber = ntohs(*(RequestStringLength*) request.c_str());
+        if (columnNumber < 1) return false;
 
+        request = request.substr(sizeof(RequestStringLength));
+        std::vector<std::string> values = readStringArray(request);
+        if (values.size() % columnNumber != 0) return false;
+
+        int requiredColumns = 0;
+        Resource resource = resources[resourceId];
+        std::vector<std::string> columns(values.begin(), values.begin() + columnNumber);
+        for (auto &column : columns) {
+            if (!resource.columns.contains(column)) return false;
+            if (!resource.columns[column].optional) requiredColumns++;
+        }
+        if (requiredColumns != resource.requiredColumns) return false;
+
+        Insert insert {fd, columns, std::vector(values.begin() + columnNumber, values.end())};
+        for (auto &batch : batches) {
+            if (batch.type == type && batch.resourceId == resourceId) {
+                batch.inserts.push_back(insert);
+                return true;
+            }
+        }
+
+        Batch batch(resourceId, insert);
+        batches.push_back(batch);
+        return true;
     }
 
     return false;
