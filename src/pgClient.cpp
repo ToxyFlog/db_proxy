@@ -16,7 +16,7 @@ PGResponse::PGResponse(PGresult *_result) : result(_result) {
 }
 
 char *PGResponse::get(int tuple, int field) {
-    if (tuple >= tuples) return nullptr;
+    if (tuple >= tuples || field >= fields) return nullptr;
     return array[tuple * fields + field];
 };
 

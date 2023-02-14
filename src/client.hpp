@@ -4,10 +4,22 @@
 #include <arpa/inet.h>
 #include <optional>
 #include <string>
+#include <vector>
 #include "config.hpp"
 #include "request.hpp"
 
-typedef std::vector<std::vector<char *>> SelectResult;
+class SelectResult {
+private:
+    std::vector<std::vector<char *>> storage;
+
+public:
+    std::vector<char *> memory;
+
+    SelectResult(int tuples, int fields) : storage(tuples, std::vector<char *>(fields)) {}
+
+    inline std::vector<char *> &operator[](int index) { return storage[index]; }
+    inline size_t size() { return storage.size(); }
+};
 
 class Client {
 private:

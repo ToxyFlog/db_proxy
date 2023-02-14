@@ -10,6 +10,7 @@
 #include "utils.hpp"
 #include "write.hpp"
 
+static const int MEMORY_BLOCK_SIZE = 128;
 static const size_t READ_BUFFER_LENGTH = 1024;
 
 Client::Client(const char *ipAddress, uint16_t port) { connect(ipAddress, port); }
@@ -75,17 +76,17 @@ std::optional<SelectResult> Client::select(ResourceId resource, std::vector<std:
     if (read(fd, &fields, sizeof(fields)) == -1) return std::nullopt;
     fields = htonl(fields);
 
-    int bufferReadOffset = 0;
-    ssize_t numRead;
+    char *memoryBlock;
+    int memoryOffset = MEMORY_BLOCK_SIZE, bufferReadOffset = 0, index = -1;
     char buffer[READ_BUFFER_LENGTH];
-    int index = -1;
-    SelectResult result(tuples, std::vector<char *>(fields));
+    ssize_t numRead, offset;
+    SelectResult result(tuples, fields);
     RequestStringLength stringLength = 0, stringOffset = 0;
     while ((numRead = read(fd, buffer + bufferReadOffset, READ_BUFFER_LENGTH - bufferReadOffset)) > 0) {
         numRead += bufferReadOffset;
         bufferReadOffset = 0;
 
-        for (ssize_t offset = 0; offset < numRead;) {
+        for (offset = 0; offset < numRead;) {
             if (stringOffset < stringLength) {
                 size_t readLength = min(stringLength - stringOffset, numRead - offset);
                 std::memcpy(result[index / fields][index % fields] + stringOffset, buffer + offset, readLength);
@@ -100,12 +101,20 @@ std::optional<SelectResult> Client::select(ResourceId resource, std::vector<std:
                 break;
             }
 
-            stringOffset = 0;
-            stringLength = ntohs(*(RequestStringLength *) &buffer[offset]);
-            offset += sizeof(RequestStringLength);
+            stringLength = ntohs(*(RequestStringLength *) (buffer + offset));
             if (stringLength == 0) return result;
 
-            result[++index / fields][index % fields] = (char *) malloc(sizeof(char) * stringLength);
+            stringOffset = 0;
+            offset += sizeof(RequestStringLength);
+
+            if (memoryOffset + stringLength > MEMORY_BLOCK_SIZE) {
+                memoryOffset = 0;
+                memoryBlock = (char *) malloc(sizeof(char) * MEMORY_BLOCK_SIZE);
+                result.memory.push_back(memoryBlock);
+            }
+
+            result[++index / fields][index % fields] = memoryBlock + memoryOffset;
+            memoryOffset += stringLength + 1;
         }
     }
 
@@ -142,6 +151,5 @@ void Client::disconnect() {
 }
 
 void Client::clearResult(SelectResult &tuples) {
-    for (auto &tuple : tuples)
-        for (auto field : tuple) free(field);
+    for (auto memory : tuples.memory) free(memory);
 }

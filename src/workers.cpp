@@ -67,16 +67,15 @@ void completeSelectOperation(Select &select, std::vector<std::string> &columns, 
     if (setFlag(select.fd, O_NONBLOCK, false) == -1) return;
 
     std::vector<int> fields;
-    std::unordered_set<std::string> currentColumns = select.columns;
+    std::vector<char *> fieldValues(response.fields);
     for (int field = 0; field < response.fields; field++)
-        if (currentColumns.contains(columns[field])) fields.push_back(field);
+        if (select.columns.contains(columns[field])) fields.push_back(field);
 
     Write write(select.fd);
     write(htonl(response.tuples));
     write(htonl(fields.size()));
-    for (int tuple = 0; tuple < response.tuples; tuple++)
-        for (auto field : fields)
-            if (!write(response.get(tuple, field))) return;
+    for (int i = 0; i < response.fields * response.tuples; i++)
+        if (!write(response.array[i])) return;
     write((RequestStringLength) 0);
     write.finish();
 

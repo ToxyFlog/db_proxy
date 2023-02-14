@@ -23,11 +23,11 @@ struct Resource {
 
 class PGResponse {
 private:
-    char **array;
     PGresult *result;
 
 public:
     int tuples, fields;
+    char **array;
 
     PGResponse(PGresult *_result);
 

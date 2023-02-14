@@ -22,19 +22,24 @@ inline void Write::flush() {
 }
 
 void Write::writeToBuffer(char *source, size_t length) {
-    if (length > WRITE_BUFFER_SIZE) {
+    if (length >= WRITE_BUFFER_SIZE) {
         flush();
         if (write(fd, source, length) == -1) error = true;
+        return;
+    }
+
+    if (offset + length <= WRITE_BUFFER_SIZE) {
+        std::memcpy(buffer + offset, source, length);
+        offset += length;
+        if (offset == WRITE_BUFFER_SIZE) flush();
         return;
     }
 
     size_t sourceOffset = 0;
     while (sourceOffset < length) {
         size_t bufferSpace = min(WRITE_BUFFER_SIZE - offset, length - sourceOffset);
-
         std::memcpy(buffer + offset, source + sourceOffset, bufferSpace);
         sourceOffset += bufferSpace;
-
         offset += bufferSpace;
         if (offset == WRITE_BUFFER_SIZE) flush();
     }

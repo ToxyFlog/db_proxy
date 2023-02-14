@@ -23,7 +23,7 @@ void signalHandler(int signal) {
 
 void dispatchBatches() {
     for (size_t i = 0; i < batches.size(); i++) {
-        Batch batch = batches[i];
+        Batch &batch = batches[i];
         if (unixTimeInMilliseconds() - batch.updatedAt < BATCH_TIMEOUT_MS && batch.size() < BATCH_MAX_SIZE) continue;
 
         workQueue.push(batch);
@@ -31,14 +31,12 @@ void dispatchBatches() {
     }
 }
 
-inline std::string readString(std::string request) { return request.substr(sizeof(RequestStringLength), ntohs(*(RequestStringLength *) &request[0])); }
-
 std::vector<std::string> readStringArray(std::string &request) {
     std::vector<std::string> result;
 
     for (size_t i = 0; i < request.size();) {
-        std::string temp = readString(request.substr(i));
-        i += sizeof(RequestStringLength) + temp.size();
+        std::string temp = request.substr(i + sizeof(RequestStringLength), ntohs(*(RequestStringLength *) &request[i]));
+        i += temp.size() + sizeof(RequestStringLength);
         result.push_back(temp);
     }
 
