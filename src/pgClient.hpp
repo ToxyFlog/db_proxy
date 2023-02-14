@@ -25,6 +25,7 @@ class PGResponse {
 private:
     char **array;
     PGresult *result;
+
 public:
     int tuples, fields;
 
@@ -37,12 +38,13 @@ public:
 class PGClient {
 private:
     PGconn *connection = nullptr;
+
 public:
     bool connect(Resource &resource);
     void disconnect();
 
-   std::optional<PGResponse> query(std::string sql);
-   std::optional<PGResponse> query(const char *sql);
+    std::optional<PGResponse> query(std::string sql);
+    std::optional<PGResponse> query(const char *sql);
 };
 
-#endif // PG_CLIENT_H
+#endif  // PG_CLIENT_H

@@ -1,12 +1,12 @@
 #ifndef TCP_SERVER_H
 #define TCP_SERVER_H
 
+#include <arpa/inet.h>
 #include <string>
 #include <vector>
-#include <arpa/inet.h>
 #include "request.hpp"
 
-typedef std::function<bool (int, std::string&)> RequestHandler;
+typedef std::function<bool(int, std::string&)> RequestHandler;
 
 struct Connection {
     int fd;
@@ -21,6 +21,7 @@ private:
     std::vector<Connection> connections;
 
     sockaddr_in createAddress(uint16_t port);
+
 public:
     Server(RequestHandler _handler);
 
@@ -33,4 +34,4 @@ public:
     void waitForEvent();
 };
 
-#endif // TCP_SERVER_H
+#endif  // TCP_SERVER_H

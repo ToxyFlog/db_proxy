@@ -3,9 +3,9 @@
 #include <thread>
 #include <vector>
 #include "client.hpp"
+#include "config.hpp"
 #include "request.hpp"
 #include "utils.hpp"
-#include "config.hpp"
 
 static const Type action = INSERT;
 
@@ -23,7 +23,7 @@ void threadFunction(int threadNumber, ResourceId resource) {
         if (!response.has_value()) exitWithError("Select failed!");
 
         SelectResult data = response.value();
-        for (size_t i = 0;i < data.size();i++) {
+        for (size_t i = 0; i < data.size(); i++) {
             printf("[%d] ", threadNumber);
             for (auto value : data[i]) printf("%s ", value);
             printf("\n");
@@ -31,7 +31,7 @@ void threadFunction(int threadNumber, ResourceId resource) {
         Client::clearResult(data);
     } else if (action == INSERT) {
         std::vector<std::vector<std::string>> values;
-        for (int i = 0;i < 20;i++) values.push_back({"string", std::to_string(threadNumber), std::to_string(i)});
+        for (int i = 0; i < 20; i++) values.push_back({"string", std::to_string(threadNumber), std::to_string(i)});
 
         int response = client.insert(resource, columns, values);
         if (response == -1) exitWithError("Insert failed!");
@@ -58,10 +58,10 @@ int main() {
     if (resource == -1) exitWithError("Couldn't create resource!");
     client.disconnect();
 
-    for (int i = 0;i < 4;i++) createThread(resource);
+    for (int i = 0; i < 1; i++) createThread(resource);
 
     std::unique_lock lock(mutex);
-    cv.wait(lock, [](){ return counter == 0; });
+    cv.wait(lock, []() { return counter == 0; });
 
     return EXIT_SUCCESS;
 }

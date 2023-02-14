@@ -3,11 +3,11 @@
 #include <unordered_set>
 #include <vector>
 #include "config.hpp"
+#include "request.hpp"
 #include "server.hpp"
 #include "utils.hpp"
-#include "request.hpp"
-#include "workers.hpp"
 #include "workQueue.hpp"
+#include "workers.hpp"
 
 static const int MIN_REQUEST_LENGTH = 5;
 
@@ -22,7 +22,7 @@ void signalHandler(int signal) {
 }
 
 void dispatchBatches() {
-    for (size_t i = 0;i < batches.size();i++) {
+    for (size_t i = 0; i < batches.size(); i++) {
         Batch batch = batches[i];
         if (unixTimeInMilliseconds() - batch.updatedAt < BATCH_TIMEOUT_MS && batch.size() < BATCH_MAX_SIZE) continue;
 
@@ -31,11 +31,12 @@ void dispatchBatches() {
     }
 }
 
-inline std::string readString(std::string request) { return request.substr(sizeof(RequestStringLength), ntohs(*(RequestStringLength*) &request[0])); }
+inline std::string readString(std::string request) { return request.substr(sizeof(RequestStringLength), ntohs(*(RequestStringLength *) &request[0])); }
+
 std::vector<std::string> readStringArray(std::string &request) {
     std::vector<std::string> result;
 
-    for (size_t i = 0;i < request.size();) {
+    for (size_t i = 0; i < request.size();) {
         std::string temp = readString(request.substr(i));
         i += sizeof(RequestStringLength) + temp.size();
         result.push_back(temp);
@@ -47,17 +48,17 @@ std::vector<std::string> readStringArray(std::string &request) {
 bool requestHandler(int fd, std::string &request) {
     if (request.size() < MIN_REQUEST_LENGTH) return false;
 
-    ResourceId resourceId = ntohl(*(ResourceId*) &request[1]);
+    ResourceId resourceId = ntohl(*(ResourceId *) &request[1]);
     if (resourceId >= (ResourceId) resources.size()) return false;
 
-    RequestType type = *(RequestType*) &request[0];
+    RequestType type = *(RequestType *) &request[0];
     request = request.substr(5);
 
     if (type == CREATE_RESOURCE) {
         std::vector<std::string> values = readStringArray(request);
         if (values.size() != 3) return false;
 
-        Resource resource {values[0], values[1], values[2], 0, {}};
+        Resource resource{values[0], values[1], values[2], 0, {}};
         Batch batch(fd, resource);
         workQueue.push(batch);
 
@@ -69,7 +70,7 @@ bool requestHandler(int fd, std::string &request) {
         if (values.size() == 0) return false;
 
         std::unordered_set<std::string> columns(values.begin(), values.end());
-        Select select {fd, columns};
+        Select select{fd, columns};
 
         for (auto &batch : batches) {
             if (batch.type == type && batch.resourceId == resourceId) {
@@ -83,7 +84,7 @@ bool requestHandler(int fd, std::string &request) {
         batches.push_back(batch);
         return true;
     } else if (type == INSERT) {
-        RequestStringLength columnNumber = ntohs(*(RequestStringLength*) request.c_str());
+        RequestStringLength columnNumber = ntohs(*(RequestStringLength *) request.c_str());
         if (columnNumber < 1) return false;
 
         request = request.substr(sizeof(RequestStringLength));
@@ -99,7 +100,7 @@ bool requestHandler(int fd, std::string &request) {
         }
         if (requiredColumns != resource.requiredColumns) return false;
 
-        Insert insert {fd, columns, std::vector(values.begin() + columnNumber, values.end())};
+        Insert insert{fd, columns, std::vector(values.begin() + columnNumber, values.end())};
         for (auto &batch : batches) {
             if (batch.type == type && batch.resourceId == resourceId) {
                 batch.inserts.push_back(insert);
@@ -121,9 +122,7 @@ void setupSignalHandlers() {
     action.sa_handler = signalHandler;
     action.sa_flags = 0;
 
-    if (sigaction(SIGINT,  &action, NULL) == -1 ||
-        sigaction(SIGTERM, &action, NULL) == -1 ||
-        sigaction(SIGPIPE, &action, NULL) == -1)
+    if (sigaction(SIGINT, &action, NULL) == -1 || sigaction(SIGTERM, &action, NULL) == -1 || sigaction(SIGPIPE, &action, NULL) == -1)
         exitWithError("Couldn't set signal handlers!");
 }
 

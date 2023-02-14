@@ -1,18 +1,18 @@
+#include "pgClient.hpp"
 #include <optional>
 #include <string>
 #include <vector>
 #include "libpq-fe.h"
 #include "workers.hpp"
-#include "pgClient.hpp"
 
 static const char *CONNECTION_STRING_PARAMS = "connect_timeout=10";
 
-PGResponse::PGResponse(PGresult *_result): result(_result) {
+PGResponse::PGResponse(PGresult *_result) : result(_result) {
     tuples = PQntuples(result);
     fields = PQnfields(result);
 
-    array = (char**) malloc(sizeof(char*) * tuples * fields);
-    for (int i = 0;i < tuples * fields;i++) array[i] = PQgetvalue(result, i / fields, i % fields);
+    array = (char **) malloc(sizeof(char *) * tuples * fields);
+    for (int i = 0; i < tuples * fields; i++) array[i] = PQgetvalue(result, i / fields, i % fields);
 }
 
 char *PGResponse::get(int tuple, int field) {

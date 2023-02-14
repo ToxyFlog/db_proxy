@@ -1,19 +1,20 @@
 #ifndef CLIENT_H
 #define CLIENT_H
 
-#include <string>
-#include <optional>
 #include <arpa/inet.h>
+#include <optional>
+#include <string>
 #include "config.hpp"
 #include "request.hpp"
 
-typedef std::vector<std::vector<char*>> SelectResult;
+typedef std::vector<std::vector<char *>> SelectResult;
 
 class Client {
 private:
     int fd = -1;
 
     sockaddr_in createAddress(const char *ipAddress, uint16_t port);
+
 public:
     Client(const char *ipAddress, uint16_t port);
     ~Client();
@@ -29,4 +30,4 @@ public:
     int insert(ResourceId resource, std::vector<std::string> columns, std::vector<std::vector<std::string>> values);
 };
 
-#endif // CLIENT_H
+#endif  // CLIENT_H

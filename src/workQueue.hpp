@@ -3,13 +3,13 @@
 
 #include <condition_variable>
 #include <mutex>
-#include <vector>
 #include <queue>
 #include <unordered_set>
+#include <vector>
 #include "config.hpp"
-#include "utils.hpp"
 #include "pgClient.hpp"
 #include "request.hpp"
+#include "utils.hpp"
 
 struct Select {
     int fd;
@@ -35,13 +35,11 @@ struct Batch {
 
     std::vector<Insert> inserts;
 
-    Batch(int _fd, Resource _resource): type(CREATE_RESOURCE), fd(_fd), resource(_resource) {}
-    Batch(ResourceId _resourceId, std::unordered_set<std::string> _columns, Select _select): type(SELECT), resourceId(_resourceId), columns(_columns), selects({_select}) {
+    Batch(int _fd, Resource _resource) : type(CREATE_RESOURCE), fd(_fd), resource(_resource) {}
+    Batch(ResourceId _resourceId, std::unordered_set<std::string> _columns, Select _select) : type(SELECT), resourceId(_resourceId), columns(_columns), selects({_select}) {
         updatedAt = unixTimeInMilliseconds();
     }
-    Batch(ResourceId _resourceId, Insert _insert): type(INSERT), resourceId(_resourceId), inserts({_insert}) {
-        updatedAt = unixTimeInMilliseconds();
-    }
+    Batch(ResourceId _resourceId, Insert _insert) : type(INSERT), resourceId(_resourceId), inserts({_insert}) { updatedAt = unixTimeInMilliseconds(); }
 
     size_t size() {
         if (type == SELECT) return selects.size();
@@ -57,10 +55,11 @@ private:
 
     std::condition_variable cv;
     bool quit = false;
+
 public:
     std::optional<Batch> pop();
     void push(Batch value);
     void stopWaiting();
 };
 
-#endif // WORK_QUEUE_H
+#endif  // WORK_QUEUE_H

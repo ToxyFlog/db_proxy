@@ -11,4 +11,4 @@ int setFlag(int fd, int flag, bool value);
 #define min(x, y) (x < y ? x : y)
 #define max(x, y) (x > y ? x : y)
 
-#endif // UTILS_H
+#endif  // UTILS_H

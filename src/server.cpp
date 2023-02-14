@@ -1,18 +1,18 @@
+#include "server.hpp"
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <poll.h>
+#include <sys/socket.h>
+#include <unistd.h>
 #include <cerrno>
 #include <string>
 #include <vector>
-#include <fcntl.h>
-#include <poll.h>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include "utils.hpp"
 #include "config.hpp"
-#include "server.hpp"
+#include "utils.hpp"
 
 static const int READ_BUFFER_LENGTH = 1024;
 
-Server::Server(RequestHandler _handler): handler(_handler) {}
+Server::Server(RequestHandler _handler) : handler(_handler) {}
 
 sockaddr_in Server::createAddress(uint16_t port) {
     sockaddr_in address;
@@ -30,14 +30,14 @@ void Server::startListening(uint16_t port) {
     int value = 1;
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value));
     sockaddr_in address = createAddress(port);
-    if (bind(fd, (sockaddr*) &address, sizeof(address)) == -1) exitWithError("Couldn't bind to the address!");
+    if (bind(fd, (sockaddr *) &address, sizeof(address)) == -1) exitWithError("Couldn't bind to the address!");
     if (listen(fd, SOMAXCONN) == -1) exitWithError("Couldn't start listening!");
 }
 
 void Server::acceptConnections() {
     int connectionFd;
     while ((connectionFd = accept(fd, NULL, NULL)) != -1) {
-        Connection connection {connectionFd, "", 0};
+        Connection connection{connectionFd, "", 0};
         connections.push_back(connection);
     }
     if (errno != EWOULDBLOCK) exitWithError("Couldn't accept connection!");
@@ -46,7 +46,7 @@ void Server::acceptConnections() {
 void Server::readRequests() {
     ssize_t numRead;
     char buffer[READ_BUFFER_LENGTH];
-    for (size_t i = 0;i < connections.size();i++) {
+    for (size_t i = 0; i < connections.size(); i++) {
         Connection &connection = connections[i];
         bool closeConnection = false;
 
@@ -81,7 +81,7 @@ void Server::readRequests() {
 void Server::waitForEvent() {
     if (!connections.empty()) return;
 
-    pollfd pfd {fd, POLLIN, 0};
+    pollfd pfd{fd, POLLIN, 0};
     poll(&pfd, 1, -1);
 }
 

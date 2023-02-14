@@ -1,16 +1,16 @@
-#include <string>
-#include <mutex>
-#include <optional>
-#include <thread>
-#include <unordered_map>
+#include "workers.hpp"
 #include <fcntl.h>
 #include <unistd.h>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <thread>
+#include <unordered_map>
 #include "pgClient.hpp"
 #include "request.hpp"
 #include "utils.hpp"
 #include "workQueue.hpp"
 #include "write.hpp"
-#include "workers.hpp"
 
 static const ResourceId NO_RESOURCE = -1;
 
@@ -30,9 +30,7 @@ inline std::string selectFrom(Resource &resource) {
 
     return "SELECT " + columns + " FROM " + resource.table;
 }
-inline std::string insertInto(std::string &table, std::string &columns, std::string &values) {
-    return "INSERT INTO " + table + "(" + columns + ") VALUES " + values;
-}
+inline std::string insertInto(std::string &table, std::string &columns, std::string &values) { return "INSERT INTO " + table + "(" + columns + ") VALUES " + values; }
 
 void createResource(PGClient &client, Batch &batch) {
     int fd = batch.fd;
@@ -50,11 +48,11 @@ void createResource(PGClient &client, Batch &batch) {
     }
 
     PGResponse tuples = response.value();
-    for (int tuple = 0;tuple < tuples.tuples;tuple++) {
+    for (int tuple = 0; tuple < tuples.tuples; tuple++) {
         bool optional = strcmp(tuples.get(tuple, 2), "NO") == 0 && strlen(tuples.get(tuple, 3)) == 0;
         if (!optional) resource.requiredColumns++;
 
-        Column column {tuples.get(tuple, 0), tuples.get(tuple, 1), optional};
+        Column column{tuples.get(tuple, 0), tuples.get(tuple, 1), optional};
         resource.columns[column.name] = column;
     }
     tuples.clear();
@@ -70,14 +68,13 @@ void completeSelectOperation(Select &select, std::vector<std::string> &columns, 
 
     std::vector<int> fields;
     std::unordered_set<std::string> currentColumns = select.columns;
-    for (int field = 0;field < response.fields;field++)
-        if (currentColumns.contains(columns[field]))
-            fields.push_back(field);
+    for (int field = 0; field < response.fields; field++)
+        if (currentColumns.contains(columns[field])) fields.push_back(field);
 
     Write write(select.fd);
     write(htonl(response.tuples));
     write(htonl(fields.size()));
-    for (int tuple = 0;tuple < response.tuples;tuple++)
+    for (int tuple = 0; tuple < response.tuples; tuple++)
         for (auto field : fields)
             if (!write(response.get(tuple, field))) return;
     write((RequestStringLength) 0);
@@ -102,7 +99,7 @@ void insert(PGClient &client, Batch &batch) {
     size_t length = 0;
     std::unordered_map<std::string, std::vector<std::string>> columnValues;
     for (auto &insert : batch.inserts) {
-        for (size_t i = 0;i < insert.columns.size();i++) {
+        for (size_t i = 0; i < insert.columns.size(); i++) {
             std::string columnName = insert.columns[i];
             std::vector<std::string> &column = columnValues[columnName];
 
@@ -112,7 +109,7 @@ void insert(PGClient &client, Batch &batch) {
             std::string type = resource.columns[columnName].type;
             bool isString = type == "text" || type == "character varying";
 
-            for (size_t j = i;j < insert.values.size();j += insert.columns.size()) {
+            for (size_t j = i; j < insert.values.size(); j += insert.columns.size()) {
                 std::string value = insert.values[j];
                 if (isString) value = "'" + value + "'";
                 column.push_back(value);
@@ -127,7 +124,7 @@ void insert(PGClient &client, Batch &batch) {
     for (auto &[name, column] : columnValues) {
         columns += name + ",";
         while (column.size() < length) column.push_back("DEFAULT");
-        for (size_t i = 0;i < length;i++) values[i] += column[i] + ",";
+        for (size_t i = 0; i < length; i++) values[i] += column[i] + ",";
     }
     columns.pop_back();
 
@@ -165,14 +162,15 @@ void processBatches() {
                     insert(client, batch);
                     break;
             }
-        } catch(std::bad_variant_access exception) {}
+        } catch (std::bad_variant_access exception) {
+        }
 
         client.disconnect();
     }
 }
 
 void createWorkers() {
-    for (int i = 0;i < WORKER_THREADS;i++) {
+    for (int i = 0; i < WORKER_THREADS; i++) {
         std::thread worker(processBatches);
         worker.detach();
     }

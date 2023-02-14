@@ -1,17 +1,17 @@
-#include <cstdlib>
-#include <string>
-#include <unistd.h>
+#include "write.hpp"
 #include <fcntl.h>
 #include <sys/socket.h>
+#include <unistd.h>
+#include <cstdlib>
+#include <string>
 #include "config.hpp"
 #include "request.hpp"
 #include "utils.hpp"
-#include "write.hpp"
 
-Write::Write(int _fd): fd(_fd) {
+Write::Write(int _fd) : fd(_fd) {
     oldBonBlockFlag = setFlag(fd, O_NONBLOCK, false);
 
-    timeval value {WRITE_TIMEOUT_SECONDS, 0};
+    timeval value{WRITE_TIMEOUT_SECONDS, 0};
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &value, sizeof(timeval));
 }
 Write::~Write() { finish(); }
@@ -43,13 +43,13 @@ void Write::writeToBuffer(char *source, size_t length) {
 void Write::c_str(const char *string) {
     RequestStringLength stringLength = strlen(string);
     variable<RequestStringLength>(htons(stringLength));
-    writeToBuffer((char*) string, stringLength);
+    writeToBuffer((char *) string, stringLength);
 }
 
 void Write::str(std::string string) {
     RequestStringLength stringLength = string.size();
     variable<RequestStringLength>(htons(stringLength));
-    writeToBuffer((char*) string.c_str(), stringLength);
+    writeToBuffer((char *) string.c_str(), stringLength);
 }
 
 bool Write::finish() {
@@ -57,7 +57,7 @@ bool Write::finish() {
     finished = true;
 
     flush();
-    timeval value {0, 0};
+    timeval value{0, 0};
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &value, sizeof(timeval));
     setFlag(fd, O_NONBLOCK, oldBonBlockFlag);
 

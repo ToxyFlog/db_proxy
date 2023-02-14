@@ -1,14 +1,14 @@
-#include <string>
-#include <optional>
+#include "client.hpp"
 #include <fcntl.h>
 #include <poll.h>
-#include <unistd.h>
 #include <sys/socket.h>
+#include <unistd.h>
+#include <optional>
+#include <string>
 #include "config.hpp"
 #include "request.hpp"
 #include "utils.hpp"
 #include "write.hpp"
-#include "client.hpp"
 
 static const size_t READ_BUFFER_LENGTH = 1024;
 
@@ -31,13 +31,13 @@ void Client::connect(const char *ipAddress, uint16_t port) {
 
     sockaddr_in address = createAddress(ipAddress, port);
     if (setFlag(fd, O_NONBLOCK, true) == -1) exitWithError("Error while setting a flag!");
-    if (::connect(fd, (sockaddr*) &address, sizeof(address)) == -1 && errno != EINPROGRESS) exitWithError("Couldn't connect to server!");
+    if (::connect(fd, (sockaddr *) &address, sizeof(address)) == -1 && errno != EINPROGRESS) exitWithError("Couldn't connect to server!");
     if (setFlag(fd, O_NONBLOCK, false) == -1) exitWithError("Error while setting a flag!");
 
-    pollfd pfd {fd, POLLOUT, 0};
+    pollfd pfd{fd, POLLOUT, 0};
     if (!poll(&pfd, 1, CONNECT_TIMEOUT_SECONDS * 1000) || pfd.revents == POLLHUP) exitWithError("Couldn't connect to server!");
 
-    timeval value {READ_TIMEOUT_SECONDS, 0};
+    timeval value{READ_TIMEOUT_SECONDS, 0};
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &value, sizeof(timeval));
 }
 
@@ -79,13 +79,13 @@ std::optional<SelectResult> Client::select(ResourceId resource, std::vector<std:
     ssize_t numRead;
     char buffer[READ_BUFFER_LENGTH];
     int index = -1;
-    SelectResult result(tuples, std::vector<char*>(fields));
+    SelectResult result(tuples, std::vector<char *>(fields));
     RequestStringLength stringLength = 0, stringOffset = 0;
     while ((numRead = read(fd, buffer + bufferReadOffset, READ_BUFFER_LENGTH - bufferReadOffset)) > 0) {
         numRead += bufferReadOffset;
         bufferReadOffset = 0;
 
-        for (ssize_t offset = 0;offset < numRead;) {
+        for (ssize_t offset = 0; offset < numRead;) {
             if (stringOffset < stringLength) {
                 size_t readLength = min(stringLength - stringOffset, numRead - offset);
                 std::memcpy(result[index / fields][index % fields] + stringOffset, buffer + offset, readLength);
@@ -101,11 +101,11 @@ std::optional<SelectResult> Client::select(ResourceId resource, std::vector<std:
             }
 
             stringOffset = 0;
-            stringLength = ntohs(*(RequestStringLength*) &buffer[offset]);
+            stringLength = ntohs(*(RequestStringLength *) &buffer[offset]);
             offset += sizeof(RequestStringLength);
             if (stringLength == 0) return result;
 
-            result[++index / fields][index % fields] = (char*) malloc(sizeof(char) * stringLength);
+            result[++index / fields][index % fields] = (char *) malloc(sizeof(char) * stringLength);
         }
     }
 
@@ -117,8 +117,7 @@ int Client::insert(ResourceId resource, std::vector<std::string> columns, std::v
     RequestLength length = sizeof(RequestType) + sizeof(ResourceId) + sizeof(RequestStringLength);
     for (auto &column : columns) length += column.size() + sizeof(RequestStringLength);
     for (auto &tuple : tuples)
-        for (auto &value : tuple)
-            length += value.size() + sizeof(RequestStringLength);
+        for (auto &value : tuple) length += value.size() + sizeof(RequestStringLength);
 
     Write write(fd);
     write((RequestLength) htonl(length));
@@ -127,8 +126,7 @@ int Client::insert(ResourceId resource, std::vector<std::string> columns, std::v
     write((RequestStringLength) htons(columns.size()));
     for (auto &column : columns) write(column);
     for (auto &tuple : tuples)
-        for (auto &value : tuple)
-            write(value);
+        for (auto &value : tuple) write(value);
     if (!write.finish()) return -1;
 
     int32_t response;
@@ -145,6 +143,5 @@ void Client::disconnect() {
 
 void Client::clearResult(SelectResult &tuples) {
     for (auto &tuple : tuples)
-        for (auto field : tuple)
-            free(field);
+        for (auto field : tuple) free(field);
 }

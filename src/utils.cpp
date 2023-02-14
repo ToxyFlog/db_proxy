@@ -1,9 +1,9 @@
+#include "utils.hpp"
+#include <fcntl.h>
 #include <chrono>
 #include <cstdlib>
 #include <string>
 #include <vector>
-#include <fcntl.h>
-#include "utils.hpp"
 
 void exitWithError(const char *message) {
     fprintf(stderr, "ERROR: %s\n", message);

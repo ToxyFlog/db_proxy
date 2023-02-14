@@ -1,13 +1,13 @@
-#include <condition_variable>
-#include <optional>
-#include <mutex>
-#include <queue>
 #include "workQueue.hpp"
+#include <condition_variable>
+#include <mutex>
+#include <optional>
+#include <queue>
 
 std::optional<Batch> WorkQueue::pop() {
     std::unique_lock lock(mutex);
 
-    cv.wait(lock, [this](){ return !queue.empty() || quit; });
+    cv.wait(lock, [this]() { return !queue.empty() || quit; });
     if (quit) return std::nullopt;
 
     Batch data = queue.front();

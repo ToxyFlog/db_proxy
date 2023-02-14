@@ -12,4 +12,4 @@ static const int CONNECT_TIMEOUT_SECONDS = 5;
 static const int WRITE_TIMEOUT_SECONDS = 15;
 static const int READ_TIMEOUT_SECONDS = 30;
 
-#endif // CONFIG_H
+#endif  // CONFIG_H

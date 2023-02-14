@@ -11,4 +11,4 @@ enum Type : RequestType { CREATE_RESOURCE, SELECT, INSERT };
 
 typedef uint16_t RequestStringLength;
 
-#endif // REQUEST_H
+#endif  // REQUEST_H
