@@ -4,7 +4,6 @@
 #include <vector>
 #include "client.hpp"
 #include "config.hpp"
-#include "request.hpp"
 #include "utils.hpp"
 
 static const Type action = SELECT;
@@ -23,11 +22,11 @@ void threadFunction(int threadNumber, ResourceId resource) {
         if (!response.has_value()) exitWithError("Select failed!");
 
         SelectResult data = response.value();
-        // for (size_t i = 0; i < data.size(); i++) {
-        //     printf("[%d] ", threadNumber);
-        //     for (auto value : data[i]) printf("%s ", value);
-        //     printf("\n");
-        // }
+        for (size_t i = 0; i < min(3, data.size()); i++) {
+            printf("[%d] ", threadNumber);
+            for (auto value : data[i]) printf("%s ", value);
+            printf("\n");
+        }
         Client::clearResult(data);
     } else if (action == INSERT) {
         std::vector<std::vector<std::string>> values;
@@ -50,7 +49,7 @@ void createThread(ResourceId resource) {
 int main() {
     Client client("127.0.0.1", PORT);
 
-    std::string connectionString = "postgresql://root@127.0.0.1:5432/postgres?connect_timeout=5";
+    std::string connectionString = "postgresql://root@127.0.0.1:5432/postgres";
     std::string schema = "public";
     std::string table = "test_table";
     ResourceId resource = client.createResource(connectionString, schema, table);

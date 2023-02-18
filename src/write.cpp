@@ -5,7 +5,6 @@
 #include <cstdlib>
 #include <string>
 #include "config.hpp"
-#include "request.hpp"
 #include "utils.hpp"
 
 Write::Write(int _fd) : fd(_fd) {
@@ -16,7 +15,7 @@ Write::Write(int _fd) : fd(_fd) {
 }
 Write::~Write() { finish(); }
 
-inline void Write::flush() {
+void Write::flush() {
     if (write(fd, buffer, offset) == -1) error = true;
     offset = 0;
 }
@@ -45,23 +44,25 @@ void Write::writeToBuffer(char *source, size_t length) {
     }
 }
 
-void Write::c_str(const char *string) {
-    RequestStringLength stringLength = strlen(string);
-    variable<RequestStringLength>(htons(stringLength));
-    writeToBuffer((char *) string, stringLength);
+bool Write::operator()(std::string string) {
+    FieldLength stringLength = string.size();
+    variable<FieldLength>(htons(stringLength));
+    writeToBuffer((char *) string.c_str(), stringLength);
+    return !error;
 }
 
-void Write::str(std::string string) {
-    RequestStringLength stringLength = string.size();
-    variable<RequestStringLength>(htons(stringLength));
-    writeToBuffer((char *) string.c_str(), stringLength);
+bool Write::operator()(char *string) {
+    FieldLength stringLength = strlen(string);
+    variable<FieldLength>(htons(stringLength));
+    writeToBuffer((char *) string, stringLength);
+    return !error;
 }
 
 bool Write::finish() {
-    if (finished) return !error;
-    finished = true;
-
+    FieldLength l = 0;
+    writeToBuffer((char *) &l, sizeof(FieldLength));
     flush();
+
     timeval value{0, 0};
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &value, sizeof(timeval));
     setFlag(fd, O_NONBLOCK, oldBonBlockFlag);

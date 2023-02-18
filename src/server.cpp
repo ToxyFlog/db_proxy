@@ -37,7 +37,7 @@ void Server::startListening(uint16_t port) {
 void Server::acceptConnections() {
     int connectionFd;
     while ((connectionFd = accept(fd, NULL, NULL)) != -1) {
-        Connection connection{connectionFd, "", 0};
+        Connection connection{connectionFd, 0, {}};
         connections.push_back(connection);
     }
     if (errno != EWOULDBLOCK) exitWithError("Couldn't accept connection!");
@@ -51,24 +51,24 @@ void Server::readRequests() {
         bool closeConnection = false;
 
         if (connection.length == 0) {
-            RequestLength length;
+            FieldLength length;
             numRead = read(connection.fd, &length, sizeof(length));
 
             if (numRead == -1 && errno == EWOULDBLOCK) continue;
             if (numRead != sizeof(length)) closeConnection = true;
 
-            length = ntohl(length);
-            connection.length = length;
+            if (length == 0) {
+                if (!handler(connection.fd, connection.fields)) closeConnection = true;
+                connection.fields.clear();
+            } else {
+                connection.length = ntohs(length);
+                connection.fields.push_back({});
+            }
         }
 
         while (connection.length > 0 && (numRead = read(connection.fd, buffer, min(connection.length, READ_BUFFER_LENGTH))) > 0) {
             connection.length -= numRead;
-            connection.request += std::string(buffer, buffer + numRead);
-        }
-
-        if (connection.length == 0) {
-            if (!handler(connection.fd, connection.request)) closeConnection = true;
-            connection.request = "";
+            connection.fields.back() += std::string(buffer, buffer + numRead);
         }
 
         if (closeConnection || (numRead == -1 && errno != EWOULDBLOCK)) {

@@ -6,7 +6,6 @@
 #include <optional>
 #include <string>
 #include "config.hpp"
-#include "request.hpp"
 #include "utils.hpp"
 #include "write.hpp"
 
@@ -43,12 +42,9 @@ void Client::connect(const char *ipAddress, uint16_t port) {
 }
 
 ResourceId Client::createResource(std::string connectionString, std::string schema, std::string table) {
-    RequestLength length = sizeof(RequestType) + sizeof(ResourceId) + 3 * sizeof(RequestStringLength) + connectionString.size() + schema.size() + table.size();
-
     Write write(fd);
-    write((RequestLength) htonl(length));
     write((RequestType) CREATE_RESOURCE);
-    write((ResourceId) htonl(-1));
+    write((ResourceId) htons(-1));
     write(connectionString);
     write(schema);
     write(table);
@@ -56,32 +52,31 @@ ResourceId Client::createResource(std::string connectionString, std::string sche
 
     ResourceId resource;
     if (read(fd, &resource, sizeof(resource)) == -1) return -1;
-    return ntohl(resource);
+    return ntohs(resource);
 }
 
 std::optional<SelectResult> Client::select(ResourceId resource, std::vector<std::string> columns) {
-    RequestLength length = sizeof(RequestType) + sizeof(ResourceId);
-    for (auto &column : columns) length += sizeof(RequestStringLength) + column.size();
-
     Write write(fd);
-    write((RequestLength) htonl(length));
     write((RequestType) SELECT);
-    write((ResourceId) htonl(resource));
+    write((ResourceId) htons(resource));
     for (auto &column : columns) write(column);
     if (!write.finish()) return std::nullopt;
 
+    FieldLength length;
     int tuples, fields;
+    if (read(fd, &length, sizeof(length)) == -1) return std::nullopt;
     if (read(fd, &tuples, sizeof(tuples)) == -1) return std::nullopt;
-    tuples = ntohl(tuples);
+    if (read(fd, &length, sizeof(length)) == -1) return std::nullopt;
     if (read(fd, &fields, sizeof(fields)) == -1) return std::nullopt;
-    fields = htonl(fields);
+    tuples = ntohl(tuples);
+    fields = ntohl(fields);
 
     char *memoryBlock;
     int memoryOffset = MEMORY_BLOCK_SIZE, bufferReadOffset = 0, index = -1;
     char buffer[READ_BUFFER_LENGTH];
     ssize_t numRead, offset;
     SelectResult result(tuples, fields);
-    RequestStringLength stringLength = 0, stringOffset = 0;
+    FieldLength stringLength = 0, stringOffset = 0;
     while ((numRead = read(fd, buffer + bufferReadOffset, READ_BUFFER_LENGTH - bufferReadOffset)) > 0) {
         numRead += bufferReadOffset;
         bufferReadOffset = 0;
@@ -95,17 +90,17 @@ std::optional<SelectResult> Client::select(ResourceId resource, std::vector<std:
                 continue;
             }
 
-            if (offset + sizeof(RequestStringLength) > (size_t) numRead) {
+            if (offset + sizeof(FieldLength) > (size_t) numRead) {
                 bufferReadOffset = numRead - offset;
                 std::memcpy(buffer, buffer + offset, bufferReadOffset);
                 break;
             }
 
-            stringLength = ntohs(*(RequestStringLength *) (buffer + offset));
+            stringLength = ntohs(*(FieldLength *) (buffer + offset));
             if (stringLength == 0) return result;
 
             stringOffset = 0;
-            offset += sizeof(RequestStringLength);
+            offset += sizeof(FieldLength);
 
             if (memoryOffset + stringLength > MEMORY_BLOCK_SIZE) {
                 memoryOffset = 0;
@@ -123,16 +118,10 @@ std::optional<SelectResult> Client::select(ResourceId resource, std::vector<std:
 }
 
 int Client::insert(ResourceId resource, std::vector<std::string> columns, std::vector<std::vector<std::string>> tuples) {
-    RequestLength length = sizeof(RequestType) + sizeof(ResourceId) + sizeof(RequestStringLength);
-    for (auto &column : columns) length += column.size() + sizeof(RequestStringLength);
-    for (auto &tuple : tuples)
-        for (auto &value : tuple) length += value.size() + sizeof(RequestStringLength);
-
     Write write(fd);
-    write((RequestLength) htonl(length));
     write((RequestType) INSERT);
-    write((ResourceId) htonl(resource));
-    write((RequestStringLength) htons(columns.size()));
+    write((ResourceId) htons(resource));
+    write((FieldLength) htons(columns.size()));
     for (auto &column : columns) write(column);
     for (auto &tuple : tuples)
         for (auto &value : tuple) write(value);

@@ -13,3 +13,4 @@ BreakBeforeBinaryOperators: All
 BreakBeforeTernaryOperators: true
 SpaceAfterCStyleCast: true
 SpaceBeforeRangeBasedForLoopColon: true
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse

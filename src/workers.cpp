@@ -7,12 +7,9 @@
 #include <thread>
 #include <unordered_map>
 #include "pgClient.hpp"
-#include "request.hpp"
 #include "utils.hpp"
 #include "workQueue.hpp"
 #include "write.hpp"
-
-static const ResourceId NO_RESOURCE = -1;
 
 WorkQueue workQueue;
 bool isRunning = true;
@@ -37,13 +34,13 @@ void createResource(PGClient &client, Batch &batch) {
     Resource resource = batch.resource;
 
     if (!client.connect(resource)) {
-        writeVariable(fd, ResourceId, htonl(NO_RESOURCE));
+        writeVariable(fd, ResourceId, htons(-1));
         return;
     }
 
     std::optional<PGResponse> response = client.query(selectTableSchema(resource.table));
     if (!response.has_value()) {
-        writeVariable(fd, ResourceId, htonl(NO_RESOURCE));
+        writeVariable(fd, ResourceId, htons(-1));
         return;
     }
 
@@ -58,7 +55,7 @@ void createResource(PGClient &client, Batch &batch) {
     tuples.clear();
 
     std::unique_lock resourcesLock(resourcesMutex);
-    writeVariable(fd, ResourceId, htonl(resources.size()));
+    writeVariable(fd, ResourceId, htons(resources.size()));
     resources.push_back(resource);
     resourcesLock.unlock();
 }
@@ -72,11 +69,11 @@ void completeSelectOperation(Select &select, std::vector<std::string> &columns, 
         if (select.columns.contains(columns[field])) fields.push_back(field);
 
     Write write(select.fd);
-    write(htonl(response.tuples));
+    write(htonl(response.tuples + 1));
     write(htonl(fields.size()));
     for (int i = 0; i < response.fields * response.tuples; i++)
         if (!write(response.array[i])) return;
-    write((RequestStringLength) 0);
+    write((FieldLength) 0);
     write.finish();
 
     if (setFlag(select.fd, O_NONBLOCK, true) == -1) return;
@@ -149,23 +146,20 @@ void processBatches() {
         Batch batch = element.value();
         if (batch.type != CREATE_RESOURCE && !client.connect(resources[batch.resourceId])) continue;
 
-        try {
-            switch (batch.type) {
-                case CREATE_RESOURCE:
-                    createResource(client, batch);
-                    break;
-                case SELECT:
-                    select(client, batch);
-                    break;
-                case INSERT:
-                    insert(client, batch);
-                    break;
-            }
-        } catch (std::bad_variant_access exception) {
+        switch (batch.type) {
+            case CREATE_RESOURCE:
+                createResource(client, batch);
+                break;
+            case SELECT:
+                select(client, batch);
+                break;
+            case INSERT:
+                insert(client, batch);
+                break;
         }
-
-        client.disconnect();
     }
+
+    client.disconnect();
 }
 
 void createWorkers() {

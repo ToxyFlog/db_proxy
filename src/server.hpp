@@ -4,14 +4,14 @@
 #include <arpa/inet.h>
 #include <string>
 #include <vector>
-#include "request.hpp"
+#include "utils.hpp"
 
-typedef std::function<bool(int, std::string&)> RequestHandler;
+typedef std::function<bool(int, std::vector<std::string>&)> RequestHandler;
 
 struct Connection {
     int fd;
-    std::string request;
-    RequestLength length;
+    FieldLength length;
+    std::vector<std::string> fields;
 };
 
 class Server {

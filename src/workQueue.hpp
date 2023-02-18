@@ -8,7 +8,6 @@
 #include <vector>
 #include "config.hpp"
 #include "pgClient.hpp"
-#include "request.hpp"
 #include "utils.hpp"
 
 struct Select {
@@ -25,7 +24,7 @@ struct Insert {
 struct Batch {
     Type type;
     ResourceId resourceId = -1;
-    uint64_t updatedAt = 0;
+    uint64_t createdAt = 0;
 
     int fd;
     Resource resource;
@@ -37,9 +36,9 @@ struct Batch {
 
     Batch(int _fd, Resource _resource) : type(CREATE_RESOURCE), fd(_fd), resource(_resource) {}
     Batch(ResourceId _resourceId, std::unordered_set<std::string> _columns, Select _select) : type(SELECT), resourceId(_resourceId), columns(_columns), selects({_select}) {
-        updatedAt = unixTimeInMilliseconds();
+        createdAt = unixTimeInMilliseconds();
     }
-    Batch(ResourceId _resourceId, Insert _insert) : type(INSERT), resourceId(_resourceId), inserts({_insert}) { updatedAt = unixTimeInMilliseconds(); }
+    Batch(ResourceId _resourceId, Insert _insert) : type(INSERT), resourceId(_resourceId), inserts({_insert}) { createdAt = unixTimeInMilliseconds(); }
 
     size_t size() {
         if (type == SELECT) return selects.size();

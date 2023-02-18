@@ -3,6 +3,7 @@
 
 #include <cstdlib>
 #include <string>
+#include "utils.hpp"
 
 static const size_t WRITE_BUFFER_SIZE = 4096;
 
@@ -15,35 +16,24 @@ static const size_t WRITE_BUFFER_SIZE = 4096;
 class Write {
 private:
     int fd, oldBonBlockFlag;
-    bool error = false, finished = false;
+    bool error = false;
 
     char buffer[WRITE_BUFFER_SIZE];
     size_t offset = 0;
 
     void writeToBuffer(char *source, size_t length);
-    inline void flush();
+    void flush();
 
     inline void variable(auto value) { writeToBuffer((char *) &value, sizeof(value)); }
-    void c_str(const char *str);
-    void str(std::string str);
 
 public:
     Write(int _fd);
     ~Write();
 
-    bool operator()(std::string value) {
-        str(value);
-        return !error;
-    }
-    bool operator()(const char *value) {
-        c_str(value);
-        return !error;
-    }
-    bool operator()(char *value) {
-        c_str(value);
-        return !error;
-    }
+    bool operator()(std::string value);
+    bool operator()(char *value);
     bool operator()(auto value) {
+        variable<FieldLength>(htons(sizeof(value)));
         variable(value);
         return !error;
     }
