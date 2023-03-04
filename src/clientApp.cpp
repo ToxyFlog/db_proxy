@@ -6,7 +6,7 @@
 #include "config.hpp"
 #include "utils.hpp"
 
-static const Type action = SELECT;
+static const Type action = INSERT;
 
 static const std::vector<std::string> columns = {"string", "test", "num"};
 
@@ -30,7 +30,7 @@ void threadFunction(int threadNumber, ResourceId resource) {
         Client::clearResult(data);
     } else if (action == INSERT) {
         std::vector<std::vector<std::string>> values;
-        for (int i = 0; i < 1; i++) values.push_back({"string", std::to_string(threadNumber), std::to_string(i)});
+        for (int i = 0; i < 1000; i++) values.push_back({"string", std::to_string(threadNumber), std::to_string(i)});
 
         int response = client.insert(resource, columns, values);
         if (response == -1) exitWithError("Insert failed!");

@@ -15,7 +15,7 @@ static const size_t WRITE_BUFFER_SIZE = 4096;
 
 class Write {
 private:
-    int fd, oldBonBlockFlag;
+    int fd, oldFlag;
     bool error = false;
 
     char buffer[WRITE_BUFFER_SIZE];

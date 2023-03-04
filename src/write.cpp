@@ -8,7 +8,7 @@
 #include "utils.hpp"
 
 Write::Write(int _fd) : fd(_fd) {
-    oldBonBlockFlag = setFlag(fd, O_NONBLOCK, false);
+    oldFlag = setFlag(fd, O_NONBLOCK, false);
 
     timeval value{WRITE_TIMEOUT_SECONDS, 0};
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &value, sizeof(timeval));
@@ -65,7 +65,7 @@ bool Write::finish() {
 
     timeval value{0, 0};
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &value, sizeof(timeval));
-    setFlag(fd, O_NONBLOCK, oldBonBlockFlag);
+    setFlag(fd, O_NONBLOCK, oldFlag);
 
     return !error;
 }
